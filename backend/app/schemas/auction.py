@@ -1,0 +1,66 @@
+from datetime import date
+from decimal import Decimal
+from typing import Optional, List
+
+from pydantic import BaseModel, Field
+
+
+class AuctionSearchRequest(BaseModel):
+    name: Optional[str] = None
+    family: Optional[str] = None
+    size: Optional[str] = None
+    locality: Optional[str] = None
+    price_min: Optional[Decimal] = None
+    price_max: Optional[Decimal] = None
+    end_date_from: Optional[date] = None
+    end_date_to: Optional[date] = None
+    seller: Optional[str] = None
+    buyer: Optional[str] = None
+    offset: int = Field(default=0, ge=0, le=500)
+    limit: int = Field(default=20, ge=1, le=50)
+
+
+class AuctionRead(BaseModel):
+    id: int
+    item_no: int
+    name: Optional[str]
+    family: Optional[str]
+    size: Optional[str]
+    locality: Optional[str]
+    seller: Optional[str]
+    start_price: Optional[Decimal]
+    final_price: Optional[Decimal]
+    end_date: Optional[date]
+    buyer: Optional[str]
+    is_sold: bool
+    created_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AuctionDetail(BaseModel):
+    id: int
+    item_no: int
+    name: Optional[str]
+    family: Optional[str]
+    size: Optional[str]
+    locality: Optional[str]
+    note: Optional[str]
+    seller: Optional[str]
+    start_price: Optional[Decimal]
+    final_price: Optional[Decimal]
+    end_date: Optional[date]
+    buyer: Optional[str]
+    is_sold: bool
+    images_local: Optional[List[str]]
+    images_origin: Optional[List[str]]
+    created_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class SearchResponse(BaseModel):
+    items: List[AuctionRead]
+    total: int
+    offset: int
+    limit: int
