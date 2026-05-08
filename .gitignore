@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker
+.env
+
+# Runtime
+*.log
+celerybeat-schedule*
+celerybeat.pid
+
+# System
+.DS_Store
+Thumbs.db
+
+# Sisyphus internal
+.sisyphus/
+
+# Old legacy code
+old/
