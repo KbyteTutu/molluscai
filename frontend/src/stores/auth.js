@@ -32,10 +32,7 @@ export const useAuthStore = defineStore('auth', () => {
     const response = await authApi.login({ username, password })
     token.value = response.data.access_token
     refreshToken.value = response.data.refresh_token
-    persistTokens()
-    // Fetch user profile after obtaining tokens
-    const meResponse = await authApi.me()
-    user.value = meResponse.data
+    user.value = response.data.user
     persistTokens()
   }
 
@@ -43,10 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
     const response = await authApi.register({ username, email, password })
     token.value = response.data.access_token
     refreshToken.value = response.data.refresh_token
-    persistTokens()
-    // Fetch user profile after obtaining tokens
-    const meResponse = await authApi.me()
-    user.value = meResponse.data
+    user.value = response.data.user
     persistTokens()
   }
 

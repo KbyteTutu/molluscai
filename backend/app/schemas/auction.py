@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional, List
 
@@ -16,8 +16,9 @@ class AuctionSearchRequest(BaseModel):
     end_date_to: Optional[date] = None
     seller: Optional[str] = None
     buyer: Optional[str] = None
+    sort: Optional[str] = Field(default=None, pattern="^(end_date_desc|price_desc|price_asc|item_no_desc)$")
     offset: int = Field(default=0, ge=0, le=500)
-    limit: int = Field(default=20, ge=1, le=50)
+    limit: int = Field(default=10, ge=1, le=50)
 
 
 class AuctionRead(BaseModel):
@@ -33,7 +34,9 @@ class AuctionRead(BaseModel):
     end_date: Optional[date]
     buyer: Optional[str]
     is_sold: bool
-    created_at: Optional[str] = None
+    images_origin: Optional[List[str]] = None
+    images_local: Optional[List[str]] = None
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -54,7 +57,7 @@ class AuctionDetail(BaseModel):
     is_sold: bool
     images_local: Optional[List[str]]
     images_origin: Optional[List[str]]
-    created_at: Optional[str] = None
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

@@ -1,9 +1,19 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MalacoAgent - 智能贝壳知识平台</title>
+    <meta name="description" content="MalacoAgent — 软体动物学知识检索平台 / Malacology reference platform" />
+    <title>MalacoAgent · 软体动物学知识检索</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('malaco-theme') || 'auto';
+          var dark = t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

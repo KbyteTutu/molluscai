@@ -1,0 +1,398 @@
+#!/usr/bin/env bash
+# MalacoAgent dev toolbox - one script for the whole debug/rebuild/run loop.
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+cd "$ROOT"
+
+BASE_IMAGE="malacoagent:v0.1"
+BASE_DOCKERFILE="infra/docker/base.Dockerfile"
+COMPOSE="docker compose"
+
+PG_CONTAINER="malaco-postgres"
+REDIS_CONTAINER="malaco-redis"
+BACKEND_CONTAINER="malaco-backend"
+WORKER_CONTAINER="malaco-celery-worker"
+BEAT_CONTAINER="malaco-celery-beat"
+MINIO_CONTAINER="malaco-minio"
+
+PG_USER="${POSTGRES_USER:-malaco}"
+PG_DB="${POSTGRES_DB:-malacoagent}"
+API_BASE="http://localhost:${BACKEND_PORT:-8000}/api/v1"
+
+# ─── tty colors ─────────────────────────────────────────────
+if [[ -t 1 ]]; then
+  C_DIM=$'\e[2m'; C_OK=$'\e[32m'; C_ERR=$'\e[31m'; C_WARN=$'\e[33m'; C_HEAD=$'\e[1;36m'; C_END=$'\e[0m'
+else
+  C_DIM=''; C_OK=''; C_ERR=''; C_WARN=''; C_HEAD=''; C_END=''
+fi
+log()  { printf '%s==>%s %s\n' "$C_HEAD" "$C_END" "$*"; }
+ok()   { printf '%s✓%s %s\n' "$C_OK" "$C_END" "$*"; }
+warn() { printf '%s!%s %s\n' "$C_WARN" "$C_END" "$*"; }
+err()  { printf '%s✗%s %s\n' "$C_ERR" "$C_END" "$*" >&2; }
+die()  { err "$*"; exit 1; }
+
+# ─── helpers ────────────────────────────────────────────────
+base_image_exists() { docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; }
+
+base_image_stale() {
+  base_image_exists || return 0
+  local img_ts req_ts
+  img_ts=$(docker image inspect -f '{{.Created}}' "$BASE_IMAGE" | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)
+  req_ts=$(stat -c %Y backend/requirements.txt 2>/dev/null || stat -f %m backend/requirements.txt)
+  [[ "$req_ts" -gt "$img_ts" ]]
+}
+
+ensure_base() {
+  if base_image_exists && ! base_image_stale; then
+    ok "base image $BASE_IMAGE up-to-date"
+    return
+  fi
+  if ! base_image_exists; then
+    log "base image missing - building..."
+  else
+    warn "requirements.txt newer than base image - rebuilding..."
+  fi
+  docker build -f "$BASE_DOCKERFILE" -t "$BASE_IMAGE" .
+  ok "base image built"
+}
+
+container_running() { docker ps --format '{{.Names}}' | grep -qx "$1"; }
+
+require_running() {
+  container_running "$1" || die "$1 is not running. Try: $0 up"
+}
+
+get_admin_token() {
+  local user="${ADMIN_USERNAME:-}" pass="${ADMIN_PASSWORD:-}"
+  [[ -n "$user" && -n "$pass" ]] || die "Set ADMIN_USERNAME and ADMIN_PASSWORD env vars to use this command"
+  curl -sf -X POST "$API_BASE/auth/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"$user\",\"password\":\"$pass\"}" \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])"
+}
+
+# ─── subcommands ────────────────────────────────────────────
+
+cmd_up() {
+  ensure_base
+  log "starting full stack..."
+  $COMPOSE up -d --build
+  ok "stack started"
+  cmd_status
+}
+
+cmd_down() {
+  log "stopping stack..."
+  $COMPOSE down
+  ok "stopped"
+}
+
+cmd_nuke() {
+  warn "this will DELETE all data: postgres volume, minio volume, redis volume, AND the base image"
+  printf 'Type %snuke%s to confirm: ' "$C_ERR" "$C_END"
+  local confirm; read -r confirm
+  [[ "$confirm" == "nuke" ]] || die "aborted"
+  $COMPOSE down -v
+  docker image rm -f "$BASE_IMAGE" 2>/dev/null || true
+  docker image rm -f malacoagent-backend malacoagent-celery-worker malacoagent-celery-beat malacoagent-frontend 2>/dev/null || true
+  ok "nuked. run '$0 up' to start fresh"
+}
+
+cmd_rebuild() {
+  log "force rebuilding base + app images..."
+  docker build --no-cache -f "$BASE_DOCKERFILE" -t "$BASE_IMAGE" .
+  $COMPOSE build --no-cache backend celery-worker celery-beat
+  $COMPOSE up -d backend celery-worker celery-beat
+  ok "rebuilt and restarted"
+}
+
+cmd_restart() {
+  local svc="${1:-}"
+  if [[ -z "$svc" ]]; then
+    log "restarting backend + celery-worker (code-only services)..."
+    $COMPOSE restart backend celery-worker
+  else
+    log "restarting $svc..."
+    $COMPOSE restart "$svc"
+  fi
+  ok "restarted"
+}
+
+cmd_logs() {
+  local svc="${1:-backend}"
+  log "tailing logs for $svc (Ctrl+C to stop)..."
+  $COMPOSE logs -f --tail=100 "$svc"
+}
+
+cmd_status() {
+  log "compose services:"
+  $COMPOSE ps
+  echo
+  log "health checks:"
+  if container_running "$PG_CONTAINER"; then
+    if docker exec "$PG_CONTAINER" pg_isready -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; then
+      local count
+      count=$(docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -tAc "SELECT COUNT(*) FROM auctions" 2>/dev/null || echo "?")
+      ok "postgres: ready, auctions=$count"
+    else
+      err "postgres: NOT ready"
+    fi
+  else
+    err "postgres: container not running"
+  fi
+  if container_running "$REDIS_CONTAINER"; then
+    if docker exec "$REDIS_CONTAINER" redis-cli ping 2>/dev/null | grep -q PONG; then
+      ok "redis: PONG"
+    else
+      err "redis: no PONG"
+    fi
+  else
+    err "redis: container not running"
+  fi
+  if container_running "$MINIO_CONTAINER"; then
+    if docker exec "$MINIO_CONTAINER" curl -sf http://localhost:9000/minio/health/live >/dev/null 2>&1; then
+      ok "minio: live"
+    else
+      err "minio: unhealthy"
+    fi
+  else
+    err "minio: container not running"
+  fi
+  if container_running "$BACKEND_CONTAINER"; then
+    if curl -sf "http://localhost:${BACKEND_PORT:-8000}/health" >/dev/null 2>&1; then
+      ok "backend: /health OK"
+    else
+      err "backend: /health failed"
+    fi
+  else
+    err "backend: container not running"
+  fi
+  if container_running "$WORKER_CONTAINER"; then
+    ok "celery-worker: running"
+  else
+    err "celery-worker: not running"
+  fi
+}
+
+cmd_psql() {
+  require_running "$PG_CONTAINER"
+  local flags="-i"
+  [[ -t 0 && -t 1 ]] && flags="-it"
+  docker exec $flags "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" "$@"
+}
+
+cmd_redis() {
+  require_running "$REDIS_CONTAINER"
+  local flags="-i"
+  [[ -t 0 && -t 1 ]] && flags="-it"
+  docker exec $flags "$REDIS_CONTAINER" redis-cli "$@"
+}
+
+cmd_shell() {
+  local svc="${1:-backend}"
+  local container="malaco-$svc"
+  require_running "$container"
+  docker exec -it "$container" bash
+}
+
+cmd_seed() {
+  require_running "$PG_CONTAINER"
+  local backup="legacy/postgres_backup.sql"
+  [[ -f "$backup" ]] || die "missing $backup"
+
+  local existing
+  existing=$(docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -tAc "SELECT COUNT(*) FROM auctions")
+  if [[ "$existing" -gt 100 ]]; then
+    warn "auctions table already has $existing rows. Continue? [y/N]"
+    local c; read -r c
+    [[ "$c" == "y" || "$c" == "Y" ]] || die "aborted"
+  fi
+
+  log "copying $backup into postgres container..."
+  docker cp "$backup" "$PG_CONTAINER:/tmp/backup.sql"
+
+  log "creating staging table + extracting COPY block..."
+  docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -c "
+    DROP TABLE IF EXISTS shellauction_staging;
+    CREATE TABLE shellauction_staging (
+      id integer, item integer, image text, name text, family text,
+      size text, locality text, note text, seller text,
+      start_price integer, current_price integer, end_date text,
+      owner text, deal_date date
+    );" >/dev/null
+
+  docker exec "$PG_CONTAINER" bash -c "awk '
+    /^COPY public\.shellauction/ {
+      print \"COPY shellauction_staging (id, item, image, name, family, size, locality, note, seller, start_price, current_price, end_date, owner, deal_date) FROM stdin;\"; in_copy=1; next
+    }
+    in_copy && /^\\\\\.\$/ { print; in_copy=0; exit }
+    in_copy { print }
+  ' /tmp/backup.sql > /tmp/staging_copy.sql"
+
+  log "loading staging data (this takes ~30s)..."
+  docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -f /tmp/staging_copy.sql >/dev/null
+
+  log "transforming staging -> auctions..."
+  docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -c "
+    INSERT INTO auctions (item_no, name, family, size, locality, note, seller,
+                          start_price, final_price, end_date, buyer, images_origin)
+    SELECT DISTINCT ON (item)
+      item,
+      NULLIF(name, ''),  NULLIF(family, ''), NULLIF(size, ''), NULLIF(locality, ''),
+      NULLIF(note, ''),  NULLIF(seller, ''),
+      start_price::numeric,
+      current_price::numeric,
+      CASE WHEN end_date ~ '^[0-9]{2}-[0-9]{2}-[0-9]{4}\$' THEN TO_DATE(end_date, 'DD-MM-YYYY') ELSE NULL END,
+      NULLIF(owner, ''),
+      CASE WHEN NULLIF(image, '') IS NOT NULL THEN ARRAY[image] ELSE NULL END
+    FROM shellauction_staging
+    WHERE item IS NOT NULL
+    ORDER BY item, id DESC
+    ON CONFLICT (item_no) DO NOTHING;" >/dev/null
+
+  docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -c "DROP TABLE shellauction_staging;" >/dev/null
+  docker exec "$PG_CONTAINER" rm -f /tmp/backup.sql /tmp/staging_copy.sql
+
+  local count
+  count=$(docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -tAc "SELECT COUNT(*) FROM auctions")
+  ok "seed complete. auctions=$count"
+}
+
+cmd_scrape() {
+  local n="${1:-50}"
+  local token; token=$(get_admin_token)
+  log "triggering scraper (batch_size=$n)..."
+  curl -sf -X POST "$API_BASE/admin/scraper/run" \
+    -H "Authorization: Bearer $token" \
+    -H "Content-Type: application/json" \
+    -d "{\"batch_size\":$n}" | python3 -m json.tool
+}
+
+cmd_images() {
+  local n="${1:-20}"
+  local token; token=$(get_admin_token)
+  log "triggering image downloader (batch_size=$n)..."
+  curl -sf -X POST "$API_BASE/admin/scraper/download-images" \
+    -H "Authorization: Bearer $token" \
+    -H "Content-Type: application/json" \
+    -d "{\"batch_size\":$n}" | python3 -m json.tool
+}
+
+cmd_test() {
+  log "end-to-end smoke test..."
+  local ts="t$(date +%s)"
+  local user="dev_$ts" pass="DevPassword123!" email="dev_$ts@example.com"
+
+  log "register $user..."
+  local body http
+  body=$(curl -sS -X POST "$API_BASE/auth/register" \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"$user\",\"email\":\"$email\",\"password\":\"$pass\"}" \
+    -w "\n%{http_code}")
+  http=$(echo "$body" | tail -1)
+  body=$(echo "$body" | head -n -1)
+  [[ "$http" == "201" ]] || { err "register HTTP=$http: $body"; return 1; }
+  ok "register 201"
+
+  local token
+  token=$(echo "$body" | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+
+  http=$(curl -s "$API_BASE/auth/me" -H "Authorization: Bearer $token" -o /dev/null -w "%{http_code}")
+  [[ "$http" == "200" ]] || { err "/auth/me HTTP=$http"; return 1; }
+  ok "/auth/me 200"
+
+  http=$(curl -s -X POST "$API_BASE/auction/search" \
+    -H "Authorization: Bearer $token" -H "Content-Type: application/json" \
+    -d '{"limit":1}' -o /dev/null -w "%{http_code}")
+  [[ "$http" == "200" ]] || { err "/auction/search HTTP=$http"; return 1; }
+  ok "/auction/search 200"
+
+  ok "all smoke tests passed"
+}
+
+cmd_backup() {
+  require_running "$PG_CONTAINER"
+  local out="${1:-backups/$(date +%Y%m%d_%H%M%S).sql.gz}"
+  mkdir -p "$(dirname "$out")"
+  log "dumping postgres -> $out..."
+  docker exec "$PG_CONTAINER" pg_dump -U "$PG_USER" -d "$PG_DB" | gzip > "$out"
+  ok "backup written: $out ($(du -h "$out" | cut -f1))"
+}
+
+cmd_restore() {
+  local file="${1:-}"
+  [[ -n "$file" && -f "$file" ]] || die "usage: $0 restore <backup.sql.gz>"
+  require_running "$PG_CONTAINER"
+  warn "this will DROP all current data in $PG_DB. Continue? [y/N]"
+  local c; read -r c
+  [[ "$c" == "y" || "$c" == "Y" ]] || die "aborted"
+  log "restoring from $file..."
+  docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d postgres -c "DROP DATABASE IF EXISTS $PG_DB WITH (FORCE); CREATE DATABASE $PG_DB;" >/dev/null
+  gunzip -c "$file" | docker exec -i "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" >/dev/null
+  ok "restored"
+}
+
+cmd_help() {
+  cat <<EOF
+${C_HEAD}MalacoAgent dev toolbox${C_END}
+
+${C_HEAD}Lifecycle:${C_END}
+  up                start full stack (builds base image if missing/stale)
+  down              stop stack
+  nuke              wipe ALL data and images (requires typing 'nuke')
+  rebuild           force --no-cache rebuild of base + app images
+  restart [svc]     restart service (default: backend + celery-worker)
+
+${C_HEAD}Observability:${C_END}
+  logs [svc]        tail logs (default: backend)
+  status            health check across all services
+
+${C_HEAD}Shells:${C_END}
+  psql [args...]    open psql in postgres container
+  redis [args...]   open redis-cli
+  shell [svc]       bash into container (default: backend)
+
+${C_HEAD}Data:${C_END}
+  seed              import legacy/postgres_backup.sql into auctions
+  backup [path]     pg_dump to backups/<timestamp>.sql.gz
+  restore <file>    restore from backup (DESTRUCTIVE)
+
+${C_HEAD}Tasks (requires ADMIN_USERNAME + ADMIN_PASSWORD env):${C_END}
+  scrape [N]        trigger auction scraper (default N=50)
+  images [N]        trigger image downloader (default N=20)
+
+${C_HEAD}Testing:${C_END}
+  test              end-to-end smoke test (register/me/search)
+
+${C_HEAD}Examples:${C_END}
+  ./dev up
+  ./dev logs celery-worker
+  ./dev psql -c "SELECT COUNT(*) FROM auctions"
+  ADMIN_USERNAME=admin ADMIN_PASSWORD=xxx ./dev scrape 100
+EOF
+}
+
+# ─── dispatch ───────────────────────────────────────────────
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  up)       cmd_up "$@" ;;
+  down)     cmd_down "$@" ;;
+  nuke)     cmd_nuke "$@" ;;
+  rebuild)  cmd_rebuild "$@" ;;
+  restart)  cmd_restart "$@" ;;
+  logs)     cmd_logs "$@" ;;
+  status|ps) cmd_status "$@" ;;
+  psql)     cmd_psql "$@" ;;
+  redis)    cmd_redis "$@" ;;
+  shell|sh) cmd_shell "$@" ;;
+  seed)     cmd_seed "$@" ;;
+  scrape)   cmd_scrape "$@" ;;
+  images)   cmd_images "$@" ;;
+  test)     cmd_test "$@" ;;
+  backup)   cmd_backup "$@" ;;
+  restore)  cmd_restore "$@" ;;
+  help|-h|--help) cmd_help ;;
+  *) err "unknown command: $cmd"; cmd_help; exit 1 ;;
+esac

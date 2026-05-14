@@ -30,9 +30,13 @@ Thumbs.db
 # Sisyphus internal
 .sisyphus/
 
-# Old legacy code - track source only, exclude nested repos and deps
-old/*/.git/
-old/*/node_modules/
-old/*/dist/
-old/*/__pycache__/
-old/*/*.pyc
+# Dev script output
+backups/
+
+# Legacy/archived code - track source only, exclude nested repos, deps, and large binary dumps
+legacy/postgres_backup.sql
+legacy/*/.git/
+legacy/*/node_modules/
+legacy/*/dist/
+legacy/*/__pycache__/
+legacy/*/*.pyc

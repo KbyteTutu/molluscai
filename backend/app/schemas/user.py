@@ -1,6 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -17,7 +18,7 @@ class UserLogin(BaseModel):
 
 
 class UserRead(BaseModel):
-    id: str
+    id: UUID
     username: str
     email: str
     role: str
@@ -35,6 +36,13 @@ class UserUpdate(BaseModel):
 
 
 class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+class AuthResponse(BaseModel):
+    user: UserRead
     access_token: str
     refresh_token: str
     token_type: str = "bearer"

@@ -24,6 +24,10 @@ python-multipart>=0.0.6,<1.0
 httpx>=0.26,<1.0
 aiohttp>=3.9,<4.0
 
+# HTML scraping (P0.5 auction scraper)
+beautifulsoup4>=4.12,<5.0
+lxml>=5.0,<6.0
+
 # File handling
 aiofiles>=23.2,<24.0
 

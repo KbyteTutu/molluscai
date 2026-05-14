@@ -1,293 +1,151 @@
-<template>
-  <div class="login-page">
-    <div class="login-container">
-      <div class="login-header">
-        <h1>MalacoAgent</h1>
-        <p>智能贝壳知识平台</p>
-      </div>
-
-      <el-card class="login-card" shadow="hover">
-        <el-tabs v-model="activeTab" class="login-tabs">
-          <el-tab-pane label="登录" name="login">
-            <el-form
-              ref="loginFormRef"
-              :model="loginForm"
-              :rules="loginRules"
-              label-position="top"
-              @keyup.enter="handleLogin"
-            >
-              <el-form-item label="用户名" prop="username">
-                <el-input
-                  v-model="loginForm.username"
-                  placeholder="请输入用户名"
-                  :prefix-icon="User"
-                />
-              </el-form-item>
-
-              <el-form-item label="密码" prop="password">
-                <el-input
-                  v-model="loginForm.password"
-                  type="password"
-                  placeholder="请输入密码"
-                  :prefix-icon="Lock"
-                  show-password
-                />
-              </el-form-item>
-
-              <el-form-item>
-                <el-button
-                  type="primary"
-                  :loading="loginLoading"
-                  class="submit-btn"
-                  @click="handleLogin"
-                >
-                  登录
-                </el-button>
-              </el-form-item>
-            </el-form>
-          </el-tab-pane>
-
-          <el-tab-pane label="注册" name="register">
-            <el-form
-              ref="registerFormRef"
-              :model="registerForm"
-              :rules="registerRules"
-              label-position="top"
-              @keyup.enter="handleRegister"
-            >
-              <el-form-item label="用户名" prop="username">
-                <el-input
-                  v-model="registerForm.username"
-                  placeholder="请输入用户名"
-                  :prefix-icon="User"
-                />
-              </el-form-item>
-
-              <el-form-item label="邮箱" prop="email">
-                <el-input
-                  v-model="registerForm.email"
-                  placeholder="请输入邮箱"
-                  :prefix-icon="Message"
-                />
-              </el-form-item>
-
-              <el-form-item label="密码" prop="password">
-                <el-input
-                  v-model="registerForm.password"
-                  type="password"
-                  placeholder="请输入密码（至少6位）"
-                  :prefix-icon="Lock"
-                  show-password
-                />
-              </el-form-item>
-
-              <el-form-item label="确认密码" prop="confirmPassword">
-                <el-input
-                  v-model="registerForm.confirmPassword"
-                  type="password"
-                  placeholder="请再次输入密码"
-                  :prefix-icon="Lock"
-                  show-password
-                />
-              </el-form-item>
-
-              <el-form-item>
-                <el-button
-                  type="primary"
-                  :loading="registerLoading"
-                  class="submit-btn"
-                  @click="handleRegister"
-                >
-                  注册
-                </el-button>
-              </el-form-item>
-            </el-form>
-          </el-tab-pane>
-        </el-tabs>
-
-        <el-alert
-          v-if="errorMessage"
-          :title="errorMessage"
-          type="error"
-          show-icon
-          :closable="true"
-          class="error-alert"
-          @close="errorMessage = ''"
-        />
-      </el-card>
-    </div>
-  </div>
-</template>
-
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { User, Lock, Message } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import ShellLogo from '@/components/brand/ShellLogo.vue'
+import Card from '@/components/ui/Card.vue'
+import CardHeader from '@/components/ui/CardHeader.vue'
+import CardTitle from '@/components/ui/CardTitle.vue'
+import CardDescription from '@/components/ui/CardDescription.vue'
+import CardContent from '@/components/ui/CardContent.vue'
+import Tabs from '@/components/ui/Tabs.vue'
+import TabsList from '@/components/ui/TabsList.vue'
+import TabsTrigger from '@/components/ui/TabsTrigger.vue'
+import TabsContent from '@/components/ui/TabsContent.vue'
+import Input from '@/components/ui/Input.vue'
+import Label from '@/components/ui/Label.vue'
+import Button from '@/components/ui/Button.vue'
+import Alert from '@/components/ui/Alert.vue'
+import AlertTitle from '@/components/ui/AlertTitle.vue'
+import AlertDescription from '@/components/ui/AlertDescription.vue'
+import { AlertCircle } from 'lucide-vue-next'
+import ThemeToggle from '@/components/layout/ThemeToggle.vue'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
-const activeTab = ref('login')
-const errorMessage = ref('')
-const loginLoading = ref(false)
-const registerLoading = ref(false)
+const tab = ref('login')
+const loading = ref(false)
+const error = ref('')
 
-const loginFormRef = ref(null)
-const registerFormRef = ref(null)
+const loginForm = reactive({ username: '', password: '' })
+const registerForm = reactive({ username: '', email: '', password: '' })
 
-const loginForm = reactive({
-  username: '',
-  password: ''
-})
+const validLogin = computed(() => loginForm.username.trim() && loginForm.password.trim())
+const validRegister = computed(() =>
+  registerForm.username.trim().length >= 3 &&
+  /\S+@\S+\.\S+/.test(registerForm.email) &&
+  registerForm.password.length >= 8
+)
 
-const registerForm = reactive({
-  username: '',
-  email: '',
-  password: '',
-  confirmPassword: ''
-})
-
-const validatePassword = (rule, value, callback) => {
-  if (value.length < 6) {
-    callback(new Error('密码长度不能少于6位'))
-  } else {
-    callback()
-  }
-}
-
-const validateConfirmPassword = (rule, value, callback) => {
-  if (value !== registerForm.password) {
-    callback(new Error('两次输入的密码不一致'))
-  } else {
-    callback()
-  }
-}
-
-const loginRules = {
-  username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' }
-  ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' }
-  ]
-}
-
-const registerRules = {
-  username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, max: 50, message: '用户名长度在3到50个字符之间', trigger: 'blur' }
-  ],
-  email: [
-    { required: true, message: '请输入邮箱', trigger: 'blur' },
-    { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' }
-  ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { validator: validatePassword, trigger: 'blur' }
-  ],
-  confirmPassword: [
-    { required: true, message: '请确认密码', trigger: 'blur' },
-    { validator: validateConfirmPassword, trigger: 'blur' }
-  ]
-}
-
-async function handleLogin() {
-  if (!loginFormRef.value) return
-
-  try {
-    await loginFormRef.value.validate()
-  } catch {
+async function doLogin() {
+  if (!validLogin.value) {
+    error.value = '请填写完整的用户名和密码'
     return
   }
-
-  loginLoading.value = true
-  errorMessage.value = ''
-
+  loading.value = true
+  error.value = ''
   try {
     await authStore.login(loginForm.username, loginForm.password)
-    ElMessage.success('登录成功')
-    const redirect = route.query.redirect || '/'
-    router.push(redirect)
-  } catch (err) {
-    errorMessage.value = err.response?.data?.detail || '登录失败，请检查用户名和密码'
+    router.push(route.query.redirect || '/')
+  } catch (e) {
+    error.value = e.response?.data?.detail || '登录失败，请检查凭据'
   } finally {
-    loginLoading.value = false
+    loading.value = false
   }
 }
 
-async function handleRegister() {
-  if (!registerFormRef.value) return
-
-  try {
-    await registerFormRef.value.validate()
-  } catch {
+async function doRegister() {
+  if (!validRegister.value) {
+    error.value = '用户名 ≥ 3 字符，邮箱格式正确，密码 ≥ 8 字符'
     return
   }
-
-  registerLoading.value = true
-  errorMessage.value = ''
-
+  loading.value = true
+  error.value = ''
   try {
-    await authStore.register(
-      registerForm.username,
-      registerForm.email,
-      registerForm.password
-    )
-    ElMessage.success('注册成功')
+    await authStore.register(registerForm.username, registerForm.email, registerForm.password)
     router.push('/')
-  } catch (err) {
-    errorMessage.value = err.response?.data?.detail || '注册失败，请稍后重试'
+  } catch (e) {
+    error.value = e.response?.data?.detail || '注册失败'
   } finally {
-    registerLoading.value = false
+    loading.value = false
   }
 }
 </script>
 
-<style scoped>
-.login-page {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: calc(100vh - 140px);
-}
+<template>
+  <div class="min-h-screen flex items-center justify-center bg-background relative overflow-hidden p-4">
+    <div class="absolute -top-24 -right-24 text-primary/5 pointer-events-none">
+      <ShellLogo :size="480" />
+    </div>
+    <div class="absolute top-4 right-4">
+      <ThemeToggle />
+    </div>
 
-.login-container {
-  width: 420px;
-}
+    <div class="w-full max-w-md relative">
+      <div class="text-center mb-8">
+        <div class="inline-flex items-center gap-2.5 mb-3">
+          <ShellLogo :size="32" class="text-primary" />
+          <h1 class="font-serif text-3xl font-semibold tracking-tight">MalacoAgent</h1>
+        </div>
+        <p class="text-sm text-muted-foreground">软体动物学知识检索平台</p>
+        <p class="text-xs text-muted-foreground/70 mt-0.5">Malacology reference platform</p>
+      </div>
 
-.login-header {
-  text-align: center;
-  margin-bottom: 24px;
-}
+      <Card>
+        <CardHeader class="pb-4">
+          <Tabs v-model="tab" class="w-full">
+            <TabsList class="w-full grid grid-cols-2">
+              <TabsTrigger value="login">登录</TabsTrigger>
+              <TabsTrigger value="register">注册</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </CardHeader>
+        <CardContent>
+          <Alert v-if="error" variant="destructive" class="mb-4">
+            <AlertCircle class="size-4" />
+            <AlertTitle>错误</AlertTitle>
+            <AlertDescription>{{ error }}</AlertDescription>
+          </Alert>
 
-.login-header h1 {
-  font-size: 28px;
-  color: #1a3a5c;
-  margin: 0 0 8px 0;
-}
+          <form v-if="tab === 'login'" @submit.prevent="doLogin" class="space-y-4">
+            <div class="space-y-1.5">
+              <Label for="login-username">用户名</Label>
+              <Input id="login-username" v-model="loginForm.username" autocomplete="username" />
+            </div>
+            <div class="space-y-1.5">
+              <Label for="login-password">密码</Label>
+              <Input id="login-password" v-model="loginForm.password" type="password" autocomplete="current-password" />
+            </div>
+            <Button type="submit" class="w-full" :disabled="loading">
+              {{ loading ? '验证中…' : '登录' }}
+            </Button>
+          </form>
 
-.login-header p {
-  font-size: 14px;
-  color: #909399;
-  margin: 0;
-}
+          <form v-else @submit.prevent="doRegister" class="space-y-4">
+            <div class="space-y-1.5">
+              <Label for="reg-username">用户名</Label>
+              <Input id="reg-username" v-model="registerForm.username" autocomplete="username" />
+            </div>
+            <div class="space-y-1.5">
+              <Label for="reg-email">邮箱</Label>
+              <Input id="reg-email" v-model="registerForm.email" type="email" autocomplete="email" />
+            </div>
+            <div class="space-y-1.5">
+              <Label for="reg-password">密码 <span class="text-muted-foreground text-xs ml-1">至少 8 位</span></Label>
+              <Input id="reg-password" v-model="registerForm.password" type="password" autocomplete="new-password" />
+            </div>
+            <Button type="submit" class="w-full" :disabled="loading">
+              {{ loading ? '创建中…' : '创建账户' }}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-.login-card {
-  border-radius: 8px;
-}
-
-.login-tabs {
-  margin-top: -8px;
-}
-
-.submit-btn {
-  width: 100%;
-}
-
-.error-alert {
-  margin-top: 12px;
-}
-</style>
+      <p class="text-center text-xs text-muted-foreground/70 mt-6">
+        © 2025 MalacoAgent · 仅供学术与个人参考使用
+      </p>
+    </div>
+  </div>
+</template>

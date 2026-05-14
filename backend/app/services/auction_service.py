@@ -42,15 +42,19 @@ async def search_auctions(
     if conditions:
         base_query = base_query.where(*conditions)
 
-    # Total count
     count_query = select(func.count()).select_from(base_query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar_one()
 
-    # Paginated results
-    query = base_query.order_by(Auction.end_date.desc().nullslast()).offset(
-        filters.offset
-    ).limit(filters.limit)
+    sort_map = {
+        "price_desc": Auction.final_price.desc().nullslast(),
+        "price_asc": Auction.final_price.asc().nullslast(),
+        "item_no_desc": Auction.item_no.desc(),
+        "end_date_desc": Auction.end_date.desc().nullslast(),
+    }
+    order_by = sort_map.get(filters.sort, Auction.end_date.desc().nullslast())
+
+    query = base_query.order_by(order_by).offset(filters.offset).limit(filters.limit)
     result = await db.execute(query)
     items = result.scalars().all()
 
