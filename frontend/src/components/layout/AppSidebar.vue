@@ -69,7 +69,7 @@ function logout() {
     <div class="flex items-center gap-2 px-5 py-5">
       <ShellLogo :size="22" class="text-primary" />
       <div class="leading-tight">
-        <div class="font-serif text-lg font-semibold tracking-tight">MalacoAgent</div>
+        <div class="font-serif text-lg font-semibold tracking-tight">MolluscAI</div>
         <div class="text-[11px] text-muted-foreground">软体动物学知识检索</div>
       </div>
     </div>

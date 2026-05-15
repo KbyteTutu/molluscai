@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
-const STORAGE_KEY = 'malaco-compare'
+const STORAGE_KEY = 'mollusc-compare'
 const MAX_ITEMS = 6
 
 function loadInitial() {

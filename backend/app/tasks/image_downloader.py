@@ -22,7 +22,7 @@ BUCKET = "auction-images"
 SITE_BASE = "https://shellauction.net/"
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; MalacoAgent/0.1; +https://malacoagent.local)"
+    "User-Agent": "Mozilla/5.0 (compatible; MolluscAI/0.1; +https://molluscai.local)"
 }
 
 

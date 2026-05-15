@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# MalacoAgent dev toolbox - one script for the whole debug/rebuild/run loop.
+# MolluscAI dev toolbox - one script for the whole debug/rebuild/run loop.
 set -euo pipefail
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 cd "$ROOT"
 
-BASE_IMAGE="malacoagent:v0.1"
+BASE_IMAGE="molluscai:v0.1"
 BASE_DOCKERFILE="infra/docker/base.Dockerfile"
 COMPOSE="docker compose"
 
-PG_CONTAINER="malaco-postgres"
-REDIS_CONTAINER="malaco-redis"
-BACKEND_CONTAINER="malaco-backend"
-WORKER_CONTAINER="malaco-celery-worker"
-BEAT_CONTAINER="malaco-celery-beat"
-MINIO_CONTAINER="malaco-minio"
+PG_CONTAINER="mollusc-postgres"
+REDIS_CONTAINER="mollusc-redis"
+BACKEND_CONTAINER="mollusc-backend"
+WORKER_CONTAINER="mollusc-celery-worker"
+BEAT_CONTAINER="mollusc-celery-beat"
+MINIO_CONTAINER="mollusc-minio"
 
-PG_USER="${POSTGRES_USER:-malaco}"
-PG_DB="${POSTGRES_DB:-malacoagent}"
+PG_USER="${POSTGRES_USER:-mollusc}"
+PG_DB="${POSTGRES_DB:-molluscai}"
 API_BASE="http://localhost:${BACKEND_PORT:-8000}/api/v1"
 
 # ─── tty colors ─────────────────────────────────────────────
@@ -96,7 +96,7 @@ cmd_nuke() {
   [[ "$confirm" == "nuke" ]] || die "aborted"
   $COMPOSE down -v
   docker image rm -f "$BASE_IMAGE" 2>/dev/null || true
-  docker image rm -f malacoagent-backend malacoagent-celery-worker malacoagent-celery-beat malacoagent-frontend 2>/dev/null || true
+  docker image rm -f molluscai-backend molluscai-celery-worker molluscai-celery-beat molluscai-frontend 2>/dev/null || true
   ok "nuked. run '$0 up' to start fresh"
 }
 
@@ -192,7 +192,7 @@ cmd_redis() {
 
 cmd_shell() {
   local svc="${1:-backend}"
-  local container="malaco-$svc"
+  local container="mollusc-$svc"
   require_running "$container"
   docker exec -it "$container" bash
 }
@@ -336,7 +336,7 @@ cmd_restore() {
 
 cmd_help() {
   cat <<EOF
-${C_HEAD}MalacoAgent dev toolbox${C_END}
+${C_HEAD}MolluscAI dev toolbox${C_END}
 
 ${C_HEAD}Lifecycle:${C_END}
   up                start full stack (builds base image if missing/stale)

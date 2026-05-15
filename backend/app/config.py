@@ -11,9 +11,9 @@ class Settings(BaseSettings):
     )
 
     # PostgreSQL
-    POSTGRES_USER: str = "malaco"
-    POSTGRES_PASSWORD: str = "malaco_dev"
-    POSTGRES_DB: str = "malacoagent"
+    POSTGRES_USER: str = "mollusc"
+    POSTGRES_PASSWORD: str = "mollusc_dev"
+    POSTGRES_DB: str = "molluscai"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5433
 
@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     MINIO_ENDPOINT: str = "localhost:9002"
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
-    MINIO_BUCKET: str = "malacoagent"
+    MINIO_BUCKET: str = "molluscai"
 
     # JWT
     JWT_SECRET_KEY: str = "replace-me-with-a-secure-random-secret"
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8080"
 
     # App
-    APP_NAME: str = "MalacoAgent"
+    APP_NAME: str = "MolluscAI"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
 

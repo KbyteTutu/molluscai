@@ -1,4 +1,4 @@
-FROM malacoagent:v0.1
+FROM molluscai:v0.1
 
 WORKDIR /app
 

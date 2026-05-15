@@ -1,26 +1,26 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: malaco-postgres
+    container_name: mollusc-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-malaco}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-malaco_dev}
-      POSTGRES_DB: ${POSTGRES_DB:-malacoagent}
+      POSTGRES_USER: ${POSTGRES_USER:-mollusc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mollusc_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-molluscai}
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-malaco} -d ${POSTGRES_DB:-malacoagent}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mollusc} -d ${POSTGRES_DB:-molluscai}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: malaco-redis
+    container_name: mollusc-redis
     restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6380}:6379"
@@ -34,7 +34,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: malaco-minio
+    container_name: mollusc-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -55,7 +55,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: malaco-backend
+    container_name: mollusc-backend
     restart: unless-stopped
     depends_on:
       postgres:
@@ -90,7 +90,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: malaco-celery-worker
+    container_name: mollusc-celery-worker
     restart: unless-stopped
     depends_on:
       postgres:
@@ -118,7 +118,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: malaco-celery-beat
+    container_name: mollusc-celery-beat
     restart: unless-stopped
     depends_on:
       postgres:
@@ -139,7 +139,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: malaco-frontend
+    container_name: mollusc-frontend
     restart: unless-stopped
     depends_on:
       - backend

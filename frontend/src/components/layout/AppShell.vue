@@ -33,7 +33,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false })
         </Button>
         <div class="flex items-center gap-2">
           <ShellLogo :size="20" class="text-primary" />
-          <span class="font-serif text-base font-semibold tracking-tight">MalacoAgent</span>
+          <span class="font-serif text-base font-semibold tracking-tight">MolluscAI</span>
         </div>
       </header>
 

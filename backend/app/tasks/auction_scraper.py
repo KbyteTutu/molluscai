@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 DETAIL_URL = "https://shellauction.net/auction_shell.php?id={id}&pres=1"
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=20)
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; MalacoAgent/0.1; +https://malacoagent.local)"
+    "User-Agent": "Mozilla/5.0 (compatible; MolluscAI/0.1; +https://molluscai.local)"
 }
 
 

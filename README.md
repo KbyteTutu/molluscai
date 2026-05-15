@@ -1,4 +1,4 @@
-# MalacoAgent
+# MolluscAI
 
 基于 RAG 的智能贝壳知识平台：自然语言问答 + shellauction.net 拍卖数据查询 + 软体动物学文献知识库。
 
@@ -7,7 +7,7 @@
 ## 目录结构
 
 ```
-malacoagent/
+molluscai/
 ├── README.md / LICENSE / .env.example / .gitignore
 ├── docker-compose.yml          # 服务编排入口
 ├── backend/                    # FastAPI + Celery
@@ -108,7 +108,7 @@ cp .env.example .env
 ## 手动构建（跳过 ./dev）
 
 ```bash
-docker build -f infra/docker/base.Dockerfile -t malacoagent:v0.1 .
+docker build -f infra/docker/base.Dockerfile -t molluscai:v0.1 .
 docker compose up -d --build
 ```
 

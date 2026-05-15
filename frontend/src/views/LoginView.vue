@@ -87,7 +87,7 @@ async function doRegister() {
       <div class="text-center mb-8">
         <div class="inline-flex items-center gap-2.5 mb-3">
           <ShellLogo :size="32" class="text-primary" />
-          <h1 class="font-serif text-3xl font-semibold tracking-tight">MalacoAgent</h1>
+          <h1 class="font-serif text-3xl font-semibold tracking-tight">MolluscAI</h1>
         </div>
         <p class="text-sm text-muted-foreground">软体动物学知识检索平台</p>
         <p class="text-xs text-muted-foreground/70 mt-0.5">Malacology reference platform</p>
@@ -144,7 +144,7 @@ async function doRegister() {
       </Card>
 
       <p class="text-center text-xs text-muted-foreground/70 mt-6">
-        © 2025 MalacoAgent · 仅供学术与个人参考使用
+        © 2025 MolluscAI · 仅供学术与个人参考使用
       </p>
     </div>
   </div>

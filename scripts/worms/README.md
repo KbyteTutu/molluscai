@@ -75,7 +75,7 @@ automatically.
 ## Ship the data home
 
 ```bash
-scp worms_mollusca.sqlite.gz user@home:/path/to/malacoagent/
+scp worms_mollusca.sqlite.gz user@home:/path/to/molluscai/
 ```
 
 Then on the home machine:

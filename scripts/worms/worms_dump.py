@@ -38,7 +38,7 @@ import httpx
 from tqdm import tqdm
 
 API_BASE = "https://www.marinespecies.org/rest"
-USER_AGENT = "MalacoAgent-Dump/0.1 (mollusca-knowledge-platform; one-time scientific mirror)"
+USER_AGENT = "MolluscAI-Dump/0.1 (mollusca-knowledge-platform; one-time scientific mirror)"
 RANK_ORDER = {
     "Kingdom": 0, "Subkingdom": 1, "Infrakingdom": 2,
     "Phylum": 10, "Subphylum": 11, "Superclass": 19,

@@ -8,7 +8,7 @@ import DropdownMenuContent from '@/components/ui/DropdownMenuContent.vue'
 import DropdownMenuItem from '@/components/ui/DropdownMenuItem.vue'
 
 const mode = useColorMode({
-  storageKey: 'malaco-theme',
+  storageKey: 'mollusc-theme',
   selector: 'html',
   attribute: 'class',
   modes: { light: '', dark: 'dark' }
