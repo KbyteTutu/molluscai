@@ -498,6 +498,21 @@ Button, Card (Header/Content/Description/Footer/Title), Input, Label, Badge, Ava
 
 ---
 
+## 变更日志
+
+### 2026-05-17 — 项目重命名 malacoagent → molluscai
+
+- GitHub 仓库已从 `KbyteTutu/malacoagent` 重命名为 `KbyteTutu/molluscai`
+- 全局替换品牌名：`MalacoAgent` → `MolluscAI`
+- 技术标识统一：`malacoagent` → `molluscai`（DB名、bucket、包名、镜像名、Celery app）
+- Docker container 前缀：`malaco-` → `mollusc-`
+- PG 默认用户：`malaco` → `mollusc`
+- 前端 localStorage key：`malaco-theme/compare` → `mollusc-theme/compare`
+- 涉及 20 个文件，64 处替换
+- **注意**：已有环境需 `docker compose down` 后重建；已有 DB 需 rename 或重建
+
+---
+
 ## 运行命令
 
 ```bash
