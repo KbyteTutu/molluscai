@@ -15,7 +15,7 @@ import TaxonName from '@/components/common/TaxonName.vue'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
 import { useCompareStore } from '@/stores/compare'
 import { useTaxonMatchStore } from '@/stores/taxonMatch'
-import { formatPrice, formatDate, imageUrls, originalAuctionUrl } from '@/lib/utils'
+import { formatPrice, formatDate, imageUrls, originalAuctionUrl, xorId } from '@/lib/utils'
 import { toast } from 'vue-sonner'
 
 const route = useRoute()
@@ -128,61 +128,8 @@ onMounted(load)
             <img :src="src" class="h-full w-full object-cover" />
           </button>
         </div>
-      </div>
 
-      <div class="lg:col-span-3 space-y-6">
-        <div>
-          <div class="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-            <span class="font-mono">#{{ item.item_no }}</span>
-            <Separator orientation="vertical" class="h-3" />
-            <Badge :variant="item.is_sold ? 'default' : 'muted'" class="text-[10px] uppercase tracking-wider">
-              {{ item.is_sold ? 'Sold' : 'Unsold' }}
-            </Badge>
-          </div>
-          <TaxonName :name="item.name || '未命名标本'" class="text-3xl leading-tight" />
-          <p v-if="item.family" class="mt-2 text-sm text-muted-foreground">{{ item.family }}</p>
-        </div>
-
-        <Card class="p-6">
-          <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-            <div>
-              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">尺寸</dt>
-              <dd>{{ item.size || '—' }}</dd>
-            </div>
-            <div>
-              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">产地</dt>
-              <dd>{{ item.locality || '—' }}</dd>
-            </div>
-            <div>
-              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">卖家</dt>
-              <dd>{{ item.seller || '—' }}</dd>
-            </div>
-            <div>
-              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">买家</dt>
-              <dd>{{ item.buyer || '—' }}</dd>
-            </div>
-            <div>
-              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">起拍价</dt>
-              <dd class="font-mono tabular-nums">{{ formatPrice(item.start_price) || '—' }}</dd>
-            </div>
-            <div>
-              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">成交价</dt>
-              <dd class="font-mono tabular-nums">{{ formatPrice(item.final_price) || '—' }}</dd>
-            </div>
-            <div>
-              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">截拍日期</dt>
-              <dd>{{ formatDate(item.end_date) }}</dd>
-            </div>
-          </dl>
-          <template v-if="item.note">
-            <Separator class="my-5" />
-            <div>
-              <div class="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">备注</div>
-              <p class="text-sm leading-relaxed text-foreground/90">{{ item.note }}</p>
-            </div>
-          </template>
-        </Card>
-
+        <!-- 分类学校验 -->
         <Card class="p-5 space-y-3">
           <div class="flex items-start justify-between gap-3 flex-wrap">
             <div class="space-y-0.5">
@@ -278,6 +225,56 @@ onMounted(load)
               </details>
             </template>
           </div>
+        </Card>
+      </div>
+
+      <div class="lg:col-span-3 space-y-6">
+        <div>
+          <div class="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+            <span class="font-mono">#{{ xorId(item.item_no) }}</span>
+            <Separator orientation="vertical" class="h-3" />
+            <Badge :variant="item.is_sold ? 'default' : 'muted'" class="text-[10px] uppercase tracking-wider">
+              {{ item.buyer === '- no Bids' ? '流拍' : (item.is_sold ? 'Sold' : 'Unsold') }}
+            </Badge>
+          </div>
+          <TaxonName :name="item.name || '未命名标本'" class="text-3xl leading-tight" />
+          <p v-if="item.family" class="mt-2 text-sm text-muted-foreground">{{ item.family }}</p>
+        </div>
+
+        <Card class="p-6">
+          <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+            <div>
+              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">尺寸</dt>
+              <dd>{{ item.size || '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">产地</dt>
+              <dd>{{ item.locality || '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">卖家</dt>
+              <dd>{{ item.seller || '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">起拍价</dt>
+              <dd class="font-mono tabular-nums">{{ formatPrice(item.start_price) || '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">成交价</dt>
+              <dd class="font-mono tabular-nums">{{ formatPrice(item.final_price) || '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">截拍日期</dt>
+              <dd>{{ formatDate(item.end_date) }}</dd>
+            </div>
+          </dl>
+          <template v-if="item.note">
+            <Separator class="my-5" />
+            <div>
+              <div class="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">备注</div>
+              <p class="text-sm leading-relaxed text-foreground/90">{{ item.note }}</p>
+            </div>
+          </template>
         </Card>
 
         <div class="flex flex-wrap items-center gap-2">
