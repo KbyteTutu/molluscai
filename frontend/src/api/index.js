@@ -79,6 +79,10 @@ export const taxaApi = {
 export const adminApi = {
   runScraper: (data) => apiClient.post('/admin/scraper/run', data),
   downloadImages: (data) => apiClient.post('/admin/scraper/download-images', data),
+  scraperStats: () => apiClient.get('/admin/scraper/stats'),
+  listTasks: (limit = 50) => apiClient.get('/admin/tasks', { params: { limit } }),
+  getTask: (id) => apiClient.get(`/admin/tasks/${id}`),
+  revokeTask: (id) => apiClient.post(`/admin/tasks/${id}/revoke`),
   runEmbed: (data) => apiClient.post('/admin/embed/run', data),
   cancelEmbed: () => apiClient.post('/admin/embed/cancel'),
   listModels: (params) => apiClient.get('/admin/models', { params }),

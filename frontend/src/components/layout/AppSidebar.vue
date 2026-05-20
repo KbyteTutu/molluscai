@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Search, BookOpen, MessageCircle, Database, LogOut, User as UserIcon, ChevronRight, Dna, Cpu, Activity, Boxes } from 'lucide-vue-next'
+import { Search, BookOpen, MessageCircle, Database, LogOut, User as UserIcon, ChevronRight, Dna, Cpu, Activity, Boxes, ListTodo } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
 import ThemeToggle from '@/components/layout/ThemeToggle.vue'
@@ -40,6 +40,7 @@ const sections = computed(() => [
         label: '管理',
         items: [
           { name: '数据采集', to: '/admin/scraper', icon: Database, enabled: true },
+          { name: '任务管理', to: '/admin/tasks', icon: ListTodo, enabled: true },
           { name: '模型配置', to: '/admin/models', icon: Cpu, enabled: true },
           { name: '向量管理', to: '/admin/embeddings', icon: Boxes, enabled: true },
           { name: '用量统计', to: '/admin/usage', icon: Activity, enabled: true }
@@ -66,12 +67,15 @@ function logout() {
 
 <template>
   <aside class="flex h-screen w-60 shrink-0 flex-col border-r bg-card">
-    <div class="flex items-center gap-2 px-5 py-5">
-      <ShellLogo :size="22" class="text-primary" />
-      <div class="leading-tight">
-        <div class="font-serif text-lg font-semibold tracking-tight">MolluscAI</div>
-        <div class="text-[11px] text-muted-foreground">软体动物学知识检索</div>
+    <div class="flex items-center justify-between px-5 py-5">
+      <div class="flex items-center gap-2">
+        <ShellLogo :size="22" class="text-primary" />
+        <div class="leading-tight">
+          <div class="font-serif text-lg font-semibold tracking-tight">MolluscAI</div>
+          <div class="text-[11px] text-muted-foreground">软体动物学知识检索</div>
+        </div>
       </div>
+      <ThemeToggle />
     </div>
 
     <Separator />
@@ -134,7 +138,6 @@ function logout() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <ThemeToggle />
     </div>
   </aside>
 </template>

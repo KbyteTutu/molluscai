@@ -63,6 +63,12 @@ const routes = [
     meta: { requiresAuth: true, requiresSuperadmin: true }
   },
   {
+    path: '/admin/tasks',
+    name: 'AdminTasks',
+    component: () => import('@/views/AdminTasksView.vue'),
+    meta: { requiresAuth: true, requiresSuperadmin: true }
+  },
+  {
     path: '/admin/usage',
     name: 'AdminUsage',
     component: () => import('@/views/AdminUsageView.vue'),
