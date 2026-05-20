@@ -35,8 +35,8 @@ async def search_auctions(
         conditions.append(Auction.end_date <= filters.end_date_to)
     if filters.seller:
         conditions.append(Auction.seller.ilike(f"%{filters.seller}%"))
-    if filters.buyer:
-        conditions.append(Auction.buyer.ilike(f"%{filters.buyer}%"))
+    if filters.is_sold is not None:
+        conditions.append(Auction.is_sold == filters.is_sold)
 
     base_query = select(Auction)
     if conditions:

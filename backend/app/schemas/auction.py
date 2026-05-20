@@ -15,7 +15,7 @@ class AuctionSearchRequest(BaseModel):
     end_date_from: Optional[date] = None
     end_date_to: Optional[date] = None
     seller: Optional[str] = None
-    buyer: Optional[str] = None
+    is_sold: Optional[bool] = None
     sort: Optional[str] = Field(default=None, pattern="^(end_date_desc|price_desc|price_asc|item_no_desc)$")
     offset: int = Field(default=0, ge=0, le=500)
     limit: int = Field(default=10, ge=1, le=50)
