@@ -61,3 +61,14 @@ export function firstImageUrl(item) {
 export function originalAuctionUrl(itemNo) {
   return `${SHELL_IMAGE_BASE}auction_shell.php?id=${itemNo}&pres=1`
 }
+
+const XOR_KEY = 'tukechao'
+
+export function xorId(itemNo) {
+  const s = String(itemNo)
+  let result = ''
+  for (let i = 0; i < s.length; i++) {
+    result += (s.charCodeAt(i) ^ XOR_KEY.charCodeAt(i % XOR_KEY.length)).toString(16).padStart(2, '0')
+  }
+  return result.toUpperCase()
+}
