@@ -85,9 +85,17 @@ async def _process_batch(rows) -> dict:
     return {"downloaded": downloaded, "updated": updated, "batch_size": len(rows)}
 
 
-async def _pick_sold_without_local(limit: int):
+async def _pick_sold_without_local(limit: int, item_no_from: int = None, item_no_to: int = None):
     conn = await asyncpg.connect(settings.DATABASE_URL_SYNC)
     try:
+        params = [limit]
+        where_extra = ""
+        if item_no_from is not None:
+            where_extra += "  AND item_no >= $" + str(len(params) + 1) + "\n"
+            params.append(item_no_from)
+        if item_no_to is not None:
+            where_extra += "  AND item_no <= $" + str(len(params) + 1) + "\n"
+            params.append(item_no_to)
         rows = await conn.fetch(
             """
             SELECT item_no, images_origin
@@ -95,10 +103,11 @@ async def _pick_sold_without_local(limit: int):
             WHERE is_sold = true
               AND images_origin IS NOT NULL
               AND (images_local IS NULL OR cardinality(images_local) = 0)
+            """ + where_extra + """
             ORDER BY end_date DESC NULLS LAST
             LIMIT $1
             """,
-            limit,
+            *params,
         )
         return rows
     finally:
@@ -106,12 +115,12 @@ async def _pick_sold_without_local(limit: int):
 
 
 @celery_app.task(name="auction.download_images", bind=True)
-def download_sold_images(self, batch_size: int = 50) -> dict:
+def download_sold_images(self, batch_size: int = 50, item_no_from: int = None, item_no_to: int = None) -> dict:
     """Pick up to `batch_size` sold auctions missing local images and download them."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        rows = loop.run_until_complete(_pick_sold_without_local(batch_size))
+        rows = loop.run_until_complete(_pick_sold_without_local(batch_size, item_no_from, item_no_to))
         if not rows:
             return {"downloaded": 0, "updated": 0, "batch_size": 0}
         result = loop.run_until_complete(_process_batch(rows))
