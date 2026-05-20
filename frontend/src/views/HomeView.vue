@@ -27,18 +27,21 @@ const search = useSearchStore()
 const view = ref('cards')
 const filtersOpen = ref(false)
 
-function daysAgoISO(days) {
-  const d = new Date()
-  d.setDate(d.getDate() - days)
-  return d.toISOString().slice(0, 10)
+function lastMonthRange() {
+  const now = new Date()
+  const from = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const to = new Date(now.getFullYear(), now.getMonth(), 0)
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }
 }
+
+const { from: defaultFrom, to: defaultTo } = lastMonthRange()
 
 const filters = reactive({
   name: '', family: '', size: '', locality: '',
   price_min: null, price_max: null,
-  end_date_from: daysAgoISO(30),
-  end_date_to: null,
-  seller: '', buyer: '',
+  end_date_from: defaultFrom,
+  end_date_to: defaultTo,
+  seller: '', is_sold: '',
   sort: 'price_desc'
 })
 
@@ -56,7 +59,7 @@ const totalSold = ref(null)
 
 const advancedFilterCount = computed(() => {
   let n = 0
-  for (const k of ['family','size','locality','seller','buyer','end_date_from','end_date_to']) if (filters[k]) n++
+  for (const k of ['family','size','locality','seller','is_sold','end_date_from','end_date_to']) if (filters[k]) n++
   if (filters.price_min !== null || filters.price_max !== null) n++
   return n
 })
@@ -65,6 +68,11 @@ function buildPayload() {
   const out = { offset: offset.value, limit: PAGE_SIZE, sort: filters.sort }
   for (const [k, v] of Object.entries(filters)) {
     if (k === 'sort') continue
+    if (k === 'is_sold') {
+      if (v === 'true') out.is_sold = true
+      else if (v === 'false') out.is_sold = false
+      continue
+    }
     if (v !== '' && v !== null && v !== undefined) out[k] = v
   }
   return out
@@ -105,7 +113,7 @@ onMounted(async () => {
     <header class="space-y-3">
       <h1 class="font-serif text-3xl md:text-4xl font-semibold tracking-tight">拍卖记录检索</h1>
       <p class="text-sm text-muted-foreground max-w-2xl leading-relaxed">
-        查询 shellauction.net 的历史拍品数据。默认显示最近一个月成交，按成交价由高到低排列。
+        查询 shellauction.net 的历史拍品数据。数据每月1日更新，默认显示上月成交记录，按成交价由高到低排列。
         <span class="text-muted-foreground/70">All records are for reference and research purposes only.</span>
       </p>
     </header>
@@ -125,7 +133,7 @@ onMounted(async () => {
       </Card>
       <Card class="p-4">
         <div class="text-[10px] uppercase tracking-widest text-muted-foreground">数据更新</div>
-        <div class="font-serif text-xl md:text-2xl mt-1">每小时</div>
+        <div class="font-serif text-xl md:text-2xl mt-1">每月1日</div>
       </Card>
     </section>
 

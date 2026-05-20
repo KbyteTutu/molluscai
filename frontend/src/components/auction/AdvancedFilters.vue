@@ -29,8 +29,17 @@ function update(field, value) {
       <Input id="f-seller" :model-value="modelValue.seller" placeholder="" @update:modelValue="update('seller', $event)" />
     </div>
     <div class="space-y-1.5">
-      <Label for="f-buyer">买家 / Buyer</Label>
-      <Input id="f-buyer" :model-value="modelValue.buyer" placeholder="" @update:modelValue="update('buyer', $event)" />
+      <Label for="f-is-sold">成交状态</Label>
+      <select
+        id="f-is-sold"
+        :value="modelValue.is_sold"
+        @change="update('is_sold', $event.target.value)"
+        class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <option value="">全部</option>
+        <option value="true">已卖出</option>
+        <option value="false">未卖出</option>
+      </select>
     </div>
     <div class="space-y-1.5">
       <Label>价格区间 / Price (€)</Label>

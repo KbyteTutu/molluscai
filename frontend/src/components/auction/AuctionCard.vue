@@ -50,7 +50,7 @@ function open() {
       <div class="flex items-start justify-between gap-2">
         <TaxonName :name="item.name || '未命名标本'" class="text-sm leading-snug line-clamp-2" />
         <Badge :variant="item.is_sold ? 'default' : 'muted'" class="shrink-0 text-[10px] uppercase tracking-wider">
-          {{ item.is_sold ? 'Sold' : 'Unsold' }}
+          {{ item.buyer === '- no Bids' ? '流拍' : (item.is_sold ? 'Sold' : 'Unsold') }}
         </Badge>
       </div>
       <div class="text-xs text-muted-foreground flex flex-wrap gap-x-2">
@@ -58,7 +58,6 @@ function open() {
         <span v-if="item.locality">· {{ item.locality }}</span>
       </div>
       <div class="flex items-end justify-between pt-1">
-        <span class="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">#{{ item.item_no }}</span>
         <div class="text-right">
           <div v-if="item.final_price" class="font-mono text-sm tabular-nums">{{ formatPrice(item.final_price) }}</div>
           <div class="text-[10px] text-muted-foreground">{{ formatDate(item.end_date) }}</div>

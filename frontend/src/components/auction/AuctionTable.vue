@@ -20,7 +20,6 @@ const router = useRouter()
     <TableHeader>
       <TableRow>
         <TableHead class="w-[40px]"></TableHead>
-        <TableHead class="w-[80px]">编号</TableHead>
         <TableHead class="min-w-[220px]">名称 / Taxon</TableHead>
         <TableHead class="w-[120px]">科</TableHead>
         <TableHead class="w-[100px]">尺寸</TableHead>
@@ -40,7 +39,6 @@ const router = useRouter()
         <TableCell @click.stop>
           <CompareToggle :item="item" />
         </TableCell>
-        <TableCell class="font-mono text-xs text-muted-foreground">#{{ item.item_no }}</TableCell>
         <TableCell><TaxonName :name="item.name || '—'" class="text-sm" /></TableCell>
         <TableCell class="text-sm">{{ item.family || '—' }}</TableCell>
         <TableCell class="text-sm text-muted-foreground">{{ item.size || '—' }}</TableCell>
@@ -49,7 +47,7 @@ const router = useRouter()
         <TableCell class="text-sm text-muted-foreground">{{ formatDate(item.end_date) }}</TableCell>
         <TableCell>
           <Badge :variant="item.is_sold ? 'default' : 'muted'" class="text-[10px] uppercase tracking-wider">
-            {{ item.is_sold ? 'Sold' : 'Unsold' }}
+            {{ item.buyer === '- no Bids' ? '流拍' : (item.is_sold ? 'Sold' : 'Unsold') }}
           </Badge>
         </TableCell>
       </TableRow>
