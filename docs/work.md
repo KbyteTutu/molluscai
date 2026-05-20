@@ -450,31 +450,51 @@ Button, Card (Header/Content/Description/Footer/Title), Input, Label, Badge, Ava
 
 ---
 
-## 当前进行中: P2.0 — 拍卖详情页布局优化
+## 当前进行中: P1.10 — 管理功能完善 (2026-05-20)
 
-### 问题
-`AuctionDetailView.vue` (~301 行) 因新增分类学校验区块而显得拥挤，纵向过长。
+### 已完成
 
-### 计划
-1. 重新排列：图片轮播 → 元数据卡片 → 操作按钮 → 分类学校验（折叠）
-2. 考虑将"分类学校验"与元数据卡片合并或折叠
-3. 响应式验证
-4. 完成后提交所有变更
+- **主题切换优化**: ThemeToggle 从侧边栏底部用户区移至顶部标题栏 Logo 旁
+- **图片下载增强**: 后端新增 `item_no_from` / `item_no_to` 参数，前端图片下载卡片新增编号范围输入框
+- **拍卖 ID 混淆**: 全站 item_no 改为与 "tukechao" 逐字符 XOR 后的大写十六进制，`lib/utils.js` 新增 `xorId()` 函数
+- **拍卖搜索优化**: 移除买家筛选，新增成交状态筛选（全部 / 已卖出 / 未卖出）；买家为 "- no Bids" 时显示"流拍"
+- **数据采集统计**: 后端新增 `GET /admin/scraper/stats`，前端采集页面展示完整统计（记录总数、最大编号、已下载图片数等 6 项），支持手动刷新
+- **任务管理器**: 新增独立任务管理界面 (`/admin/tasks`)
+  - 后端: Redis 记录任务 + Celery inspect 监控，`GET /admin/tasks` / `POST /admin/tasks/{id}/revoke`
+  - 前端: `AdminTasksView.vue` 展示最近 50 条任务，自动 5 秒刷新，支持撤消活跃任务
+
+### 文件变更
+
+| 文件 | 说明 |
+|------|------|
+| `backend/app/services/task_tracker.py` | Redis 任务记录 + Celery AsyncResult 状态查询 |
+| `backend/app/api/v1/admin.py` | 新增 tasks/stats 端点，dispatch 时 record_task |
+| `backend/app/tasks/image_downloader.py` | 支持 item_no_from / item_no_to 范围下载 |
+| `backend/app/schemas/auction.py` | buyer → is_sold 筛选字段 |
+| `backend/app/services/auction_service.py` | 同步 buyer → is_sold 过滤 |
+| `frontend/src/views/AdminTasksView.vue` | 新建任务管理页面 |
+| `frontend/src/views/AdminScraperView.vue` | 统计卡片 + 图片下载编号范围 |
+| `frontend/src/views/AuctionDetailView.vue` | xorId + 移除买家 + 流拍标记 + 分类学校验移至左栏 |
+| `frontend/src/views/HomeView.vue` | is_sold 筛选取代 buyer，每月 1 日更新 |
+| `frontend/src/components/auction/AuctionCard.vue` | 移除 item_no + 流拍标记 |
+| `frontend/src/components/auction/AuctionTable.vue` | 移除编号列 + 流拍标记 |
+| `frontend/src/components/auction/AdvancedFilters.vue` | 移除买家 + 新增成交状态下拉 |
+| `frontend/src/components/layout/AppSidebar.vue` | ThemeToggle 移至标题栏 + 任务管理链接 |
+| `frontend/src/components/layout/ThemeToggle.vue` | 位置优化 |
+| `frontend/src/lib/utils.js` | 新增 xorId() 函数 |
+| `frontend/src/api/index.js` | 新增 adminApi.scraperStats / listTasks / getTask / revokeTask |
+| `frontend/src/router/index.js` | 新增 /admin/tasks 路由 |
 
 ---
 
 ## 待解决问题
 
 ### WoRMS Dump 脚本（P2+ 再做）
-- `scripts/worms/worms_dump.py` — 独立爬取脚本，输出 SQLite `.gz`
-- 新增 classification / children / attributes / external_ids 表
-- 默认 16 并发
-- 需 `scp` 传回后导入
-- **当前 blocked** — 向量化任务与业务服务不冲突，不需要重启
+- `scripts/worms/worms_dump.py` — 独立爬取脚本
 
 ### 未提交变更
-- 所有 P1.5~P2.0 变更均为 uncommitted（约 108 个文件）
-- 需在布局完成后统一提交
+- P1.5~P1.10 变更均为 uncommitted
+- 需统一提交
 
 ---
 
@@ -489,7 +509,8 @@ Button, Card (Header/Content/Description/Footer/Title), Input, Label, Badge, Ava
 | **P1.7 — 物种分类** | taxa 表 + 向量化 + 混合搜索 + RRF | ✅ 已完成 |
 | **P1.8 — 分类学匹配** | auction→taxon 匹配 + 前端区块 | ✅ 已完成 |
 | **P1.9 — 模型管理** | LLM model CRUD + 用量 + 嵌入管理 UI | ✅ 已完成 |
-| **P2.0 — 布局优化** | AuctionDetailView 布局重排 | 🔄 进行中 |
+| **P1.10 — 管理完善** | 任务管理 + 采集统计 + 图片下载范围 + ID 混淆 + 主题优化 | ✅ 已完成 |
+| **P2.0 — 布局优化** | AuctionDetailView 布局重排 · 分类学校验移至左栏 | ✅ 已完成 |
 | **P2 — 知识库核心** | PDF 上传 + 解析 Pipeline（OCR → 元数据 → 切分 → Embedding） | 🔲 待实施 |
 | **P3 — RAG 检索** | 混合检索 + 生成回答 + 问答界面 | 🔲 待实施 |
 | **P4 — 收费系统** | 计费 + 余额 + 充值 | 🔲 待实施 |
