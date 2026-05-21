@@ -9,6 +9,7 @@ cd "$ROOT"
 BASE_IMAGE="molluscai:v0.1"
 BASE_DOCKERFILE="infra/docker/base.Dockerfile"
 COMPOSE="docker compose"
+COMPOSE_PROD="$COMPOSE -f docker-compose.yml -f docker-compose.prod.yml"
 
 PG_CONTAINER="mollusc-postgres"
 REDIS_CONTAINER="mollusc-redis"
@@ -312,6 +313,55 @@ cmd_test() {
   ok "all smoke tests passed"
 }
 
+# ─── production ──────────────────────────────────────────────
+
+cmd_prod_up() {
+  ensure_base
+  log "starting production stack..."
+  $COMPOSE_PROD up -d --build
+  ok "production stack started"
+  cmd_prod_status
+}
+
+cmd_prod_build() {
+  log "building production images..."
+  docker build -f "$BASE_DOCKERFILE" -t "$BASE_IMAGE" .
+  $COMPOSE_PROD build --no-cache backend frontend
+  ok "production images built"
+}
+
+cmd_prod_down() {
+  log "stopping production stack..."
+  $COMPOSE_PROD down
+  ok "stopped"
+}
+
+cmd_prod_restart() {
+  local svc="${1:-}"
+  if [[ -z "$svc" ]]; then
+    log "restarting backend + frontend..."
+    $COMPOSE_PROD restart backend frontend
+  else
+    log "restarting $svc..."
+    $COMPOSE_PROD restart "$svc"
+  fi
+  ok "restarted"
+}
+
+cmd_prod_logs() {
+  local svc="${1:-backend}"
+  log "tailing prod logs for $svc (Ctrl+C to stop)..."
+  $COMPOSE_PROD logs -f --tail=100 "$svc"
+}
+
+cmd_prod_status() {
+  $COMPOSE_PROD ps
+}
+
+cmd_prod_secrets() {
+  bash "$ROOT/scripts/generate-secrets.sh"
+}
+
 cmd_backup() {
   require_running "$PG_CONTAINER"
   local out="${1:-backups/$(date +%Y%m%d_%H%M%S).sql.gz}"
@@ -358,6 +408,15 @@ ${C_HEAD}Lifecycle:${C_END}
 ${C_HEAD}Observability:${C_END}
   logs [svc]        tail logs (default: backend)
   status            health check across all services
+
+${C_HEAD}Production (VPS deployment):${C_END}
+  prod-up            start stack with docker-compose.prod.yml (no --reload)
+  prod-build         build base image + --no-cache backend/frontend
+  prod-down          stop production stack
+  prod-restart [svc] restart service (default: backend + frontend)
+  prod-logs [svc]    tail production logs (default: backend)
+  prod-status        show production compose ps
+  prod-secrets       generate secure random secrets for .env
 
 ${C_HEAD}Shells:${C_END}
   psql [args...]    open psql in postgres container
@@ -407,6 +466,14 @@ case "$cmd" in
   test)     cmd_test "$@" ;;
   backup)   cmd_backup "$@" ;;
   restore)  cmd_restore "$@" ;;
+  # production
+  prod-up)        cmd_prod_up "$@" ;;
+  prod-build)     cmd_prod_build "$@" ;;
+  prod-down)      cmd_prod_down "$@" ;;
+  prod-restart)   cmd_prod_restart "$@" ;;
+  prod-logs)      cmd_prod_logs "$@" ;;
+  prod-status|prod-ps) cmd_prod_status "$@" ;;
+  prod-secrets)   cmd_prod_secrets "$@" ;;
   help|-h|--help) cmd_help ;;
   *) err "unknown command: $cmd"; cmd_help; exit 1 ;;
 esac
