@@ -334,6 +334,16 @@ cmd_restore() {
   ok "restored"
 }
 
+cmd_worms_import() {
+  local input="${1:-}"
+  [[ -z "$input" ]] && die "usage: $0 worms-import <path/to/worms_mollusca.sqlite[.gz]>"
+  bash "$ROOT/scripts/prod_import.sh" "$input" ""
+}
+
+cmd_prod_import() {
+  bash "$ROOT/scripts/prod_import.sh" "$@"
+}
+
 cmd_help() {
   cat <<EOF
 ${C_HEAD}MolluscAI dev toolbox${C_END}
@@ -356,6 +366,8 @@ ${C_HEAD}Shells:${C_END}
 
 ${C_HEAD}Data:${C_END}
   seed              import legacy/postgres_backup.sql into auctions
+  worms-import <f>  import a WoRMS sqlite (.sqlite or .sqlite.gz) into taxa.*
+  prod-import [w] [b]  full production import (worms sqlite + auction backup)
   backup [path]     pg_dump to backups/<timestamp>.sql.gz
   restore <file>    restore from backup (DESTRUCTIVE)
 
@@ -388,6 +400,8 @@ case "$cmd" in
   redis)    cmd_redis "$@" ;;
   shell|sh) cmd_shell "$@" ;;
   seed)     cmd_seed "$@" ;;
+  worms-import)   cmd_worms_import "$@" ;;
+  prod-import)    cmd_prod_import "$@" ;;
   scrape)   cmd_scrape "$@" ;;
   images)   cmd_images "$@" ;;
   test)     cmd_test "$@" ;;

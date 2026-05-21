@@ -450,7 +450,7 @@ Button, Card (Header/Content/Description/Footer/Title), Input, Label, Badge, Ava
 
 ---
 
-## 当前进行中: P1.10 — 管理功能完善 (2026-05-20)
+## P1.10 — 管理功能完善 + 拍卖 UX 优化 ✅ (2026-05-20)
 
 ### 已完成
 
@@ -492,10 +492,6 @@ Button, Card (Header/Content/Description/Footer/Title), Input, Label, Badge, Ava
 ### WoRMS Dump 脚本（P2+ 再做）
 - `scripts/worms/worms_dump.py` — 独立爬取脚本
 
-### 未提交变更
-- P1.5~P1.10 变更均为 uncommitted
-- 需统一提交
-
 ---
 
 ## P0-P6 实施计划（更新）
@@ -532,6 +528,103 @@ Button, Card (Header/Content/Description/Footer/Title), Input, Label, Badge, Ava
 - 涉及 20 个文件，64 处替换
 - **注意**：已有环境需 `docker compose down` 后重建；已有 DB 需 rename 或重建
 
+### 2026-05-20 — P1.10 管理功能完善 + 拍卖 UX 优化
+
+**拍卖显示优化**:
+- item_no 与 "tukechao" 逐字符 XOR 后以十六进制大写展示（全站）
+- 买家为 "- no Bids" 时显示"流拍"标记
+- 搜索筛选：买家筛选 → 成交状态筛选（全部 / 已卖出 / 未卖出）
+- 首页默认日期范围：本月 1 日更新，默认显示上月数据
+- AuctionDetailView: 分类学校验移至左栏图片下方，移除买家字段
+
+**管理功能**:
+- 数据采集页：新增统计卡片（总记录/最大编号/已下载/存储占用），刷新按钮
+- 独立任务管理页 (`/admin/tasks`)：任务列表、自动刷新、撤消活跃任务
+- 图片下载：支持指定 item_no 范围下载
+- 主题按钮：从侧边栏底部移至顶部标题栏
+
+**后端**:
+- `GET /admin/scraper/stats` — 采集统计端点
+- `GET /admin/tasks`、`POST /admin/tasks/{id}/revoke` — 任务管理端点
+- `backend/app/services/task_tracker.py` — Redis 任务记录 + Celery 状态追踪
+
+**提交**: 8 个原子化 commits，已推送 `origin/main`
+
+---
+
+## WoRMS 数据全字段导入与多源检索（2026-05-21）✅
+
+**背景**:
+`scripts/worms/worms_dump.py` 可在墙外把 Mollusca 整个亚树（≈ 120k 分类元）抓成
+单文件 SQLite。本 session 把这份富数据完整导入 Postgres，并把检索能力从“只查
+学名前缀”升级到“学名 + 曾用名 + 各语言俗名一站式模糊匹配”，命中曾用名/俗名
+时在 UI 上显著标注来源。
+
+**数据层**:
+- `infra/postgres/init/06-taxa-extras.sql` — 新增四张表：
+  `taxa_classification`（祖先链）、`taxa_children`（直接子级）、
+  `taxa_attributes`（生境/分布/特征键值对）、`taxa_external_ids`（NCBI / TSN /
+  IUCN / BOLD / FishBase / AlgaeBase 等十数据源外部 ID）。
+- 既有 `taxa / taxa_synonyms / taxa_vernaculars / taxa_sources /
+  taxa_distributions` 已在 04-taxa.sql 中存在，本次仅追加扩展表。
+
+**导入器**:
+- `backend/scripts/import_worms_sqlite.py`（538 行）— asyncpg + sqlite3 异步
+  分批（4 096/批）upsert，9 张表全量同步，单事务内 ANALYZE。
+- 合并策略：WoRMS 提供的字段以 WoRMS 为准；本地 xlsx 独有字段（subphylum /
+  subclass / infraclass / superorder / suborder / infraorder / superfamily）
+  保留不动；`data_source` 自动从 `xlsx` → `merged` 翻转，不可逆地承认混源。
+- `scripts/prod_import.sh` — 生产环境一键脚本：先跑 WoRMS sqlite，再用 dev.sh
+  的 staging-COPY 流程恢复 `auctions` 表（来自 `postgres_backup.sql`）。
+- `./dev worms-import <file>` / `./dev prod-import [worms] [backup]` 两个新子命令。
+- `data_import/` 目录：源数据存放点，已加入 `.gitignore`。
+
+**检索（核心改造）**:
+- `backend/app/services/taxa_search.py::_lexical_with_match()` 同时打三张表：
+  `taxa.scientificname`（学名）、`taxa_synonyms.scientificname`（曾用名）、
+  `taxa_vernaculars.vernacular`（俗名），各自取 trgm similarity Top-K，再按
+  aphia_id 去重。同一物种被多源命中时按 `name > synonym > vernacular` 选最优
+  注解，但**结果间的相对排序仍按 trgm 相似度**——保证 `Loricata`（曾用名，
+  sim=1.0）能压过 `Loricidae`（学名，sim=0.36）排到第一位。
+- 每条结果附带 `match_info: {kind, term, authority?, language?}`。
+- 新增 `lexical_search()` 公共接口供 `/taxa/search?mode=lexical` 路径直接调用，
+  不再走原来仅查 `taxa.scientificname` 的旧 SQL。
+
+**API 扩充** (`backend/app/api/v1/taxa.py`，从 2 个端点扩到 8 个):
+- `GET /taxa/search` — 现已多源 + match_info
+- `GET /taxa/{id}` — 详情（既有）
+- `GET /taxa/{id}/synonyms` — 曾用名清单
+- `GET /taxa/{id}/vernaculars` — 各语言俗名
+- `GET /taxa/{id}/distributions` — WoRMS 分布数据
+- `GET /taxa/{id}/children?accepted_only=true` — 下级分类
+- `GET /taxa/{id}/classification` — 完整祖先链
+- `GET /taxa/{id}/external-ids` — 跨数据库外部 ID
+
+**前端**:
+- `TaxaSearchView.vue` — 命中曾用名时琥珀色 `命中曾用名: <Term> <authority>`
+  banner，命中俗名时天蓝色 `命中俗名: <Term> <lang>` banner，均带 lucide
+  图标 (`History` / `Languages`)。占位文案改为 `学名、曾用名 或 各语言俗名,
+  如 Conus、Loricata、chiton…`。
+- `TaxonDetailView.vue` — 新增 5 个区块：曾用名、各语言俗名（按语言代码分列）、
+  分布、下级分类（可点击跳转）、外部数据库（可点击跳到 NCBI / ITIS / IUCN /
+  FishBase / AlgaeBase / BOLD）。Header 增加面包屑式祖先链导航。
+- `frontend/src/api/index.js` — `taxaApi` 加 6 个方法。
+
+**端到端验证**:
+1. 用 `tiny.sqlite`（500 个 Polyplacophora 节点）跑导入器：0.3 s 完成，9 张表
+   行数与源 SQLite 完全一致。
+2. 验证合并语义：手动把 aphia=55 改成 `data_source='xlsx'` + 假数据，重跑导入
+   后 `authority` 被 WoRMS 覆盖、`subphylum` 保留、`data_source` 变 `merged`。
+3. 真实 API 调用 `q=Loricata`：Polyplacophora #55 排第一，`match_info.kind=
+   synonym, term=Loricata, authority=Schumacher, 1817`。
+4. `q=chiton`：命中 #55 的德语俗名 `Chitone`，`match_info.kind=vernacular,
+   language=deu`。
+5. `/taxa/55/{synonyms,children,classification,external-ids}` 全部返回 ok。
+6. `npx vite build` 全量产物 OK，新视图 8.73 / 12.95 KB gzip。
+
+**剩余动作**: 用户自己拿真实 `worms_mollusca.sqlite` 跑一次 `./dev
+worms-import` 即可全量上线（预计全 120k 节点 ≈ 10–20 分钟）。
+
 ---
 
 ## 运行命令
@@ -556,6 +649,11 @@ Button, Card (Header/Content/Description/Footer/Title), Input, Label, Badge, Ava
 
 # 全栈健康检查
 ./dev status
+
+# WoRMS 数据导入（参见上文 "WoRMS 数据全字段导入"）
+./dev worms-import data_import/worms_mollusca.sqlite.gz
+./dev prod-import data_import/worms_mollusca.sqlite.gz \
+                  data_import/postgres_backup.sql
 
 # 清空重建
 ./dev nuke && ./dev up && ./dev seed

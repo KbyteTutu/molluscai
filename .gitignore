@@ -33,6 +33,20 @@ Thumbs.db
 # Dev script output
 backups/
 
+# Production data dumps - never commit (multi-GB binary blobs)
+# data_import/ directory itself stays tracked via README.md
+data_import/*.sqlite
+data_import/*.sqlite-journal
+data_import/*.sqlite-wal
+data_import/*.sqlite-shm
+data_import/*.sqlite.gz
+data_import/*.sql
+data_import/*.sql.gz
+data_import/*.dump
+
+# opencode/Sisyphus session state
+.omo/
+
 # Legacy/archived code - track source only, exclude nested repos, deps, and large binary dumps
 legacy/postgres_backup.sql
 legacy/*/.git/

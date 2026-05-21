@@ -75,14 +75,31 @@ automatically.
 ## Ship the data home
 
 ```bash
-scp worms_mollusca.sqlite.gz user@home:/path/to/molluscai/
+scp worms_mollusca.sqlite.gz user@home:/path/to/molluscai/data_import/
 ```
 
-Then on the home machine:
+Then on the home machine, with the stack running (`./dev up`):
 
 ```bash
-./dev worms-import worms_mollusca.sqlite.gz   # planned subcommand
+./dev worms-import data_import/worms_mollusca.sqlite.gz
 ```
+
+The importer is **idempotent**: re-running it overwrites WoRMS-sourced fields
+on existing rows while preserving xlsx-only fields (subphylum, subclass, etc.),
+and flips `data_source` from `xlsx` → `merged` on rows that already had local
+data. Synonyms / vernaculars / distributions / classification / children /
+attributes / external IDs are fully replaced.
+
+For a full production import that also restores the `auctions` table from
+a `postgres_backup.sql` dump, use:
+
+```bash
+./dev prod-import data_import/worms_mollusca.sqlite.gz \
+                  data_import/postgres_backup.sql
+```
+
+Either argument can be omitted (or empty string) to skip that half of the
+import.
 
 ## Attribution (required)
 
