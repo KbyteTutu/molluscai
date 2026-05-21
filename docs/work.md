@@ -710,7 +710,7 @@ PNG）。
 
 ## P5 — 公开首页 / 角色配额 / 查询审计 / 后台数据统计（2026-05-21）✅
 
-按需求："进入站点显示拍卖检索默认页 → 点击其他功能跳转登录 → 登录后正常查询；
+
 普通用户每小时 10 次智能检索，VIP 100 次，其他不限；限额可后台修改；查询留日志
 （IP/用户名/查询内容）；提供数据统计界面。"
 
@@ -808,6 +808,43 @@ PNG）。
   扩到多实例时需切到 Redis sorted-set，已在 Oracle 评审中标记。
 - 现有 `users.daily_query_limit`（per-user override）仍未接入；如需要个体豁免，
   需在 `_hourly_limit / _daily_limit` 中按用户优先读取该列。
+
+---
+
+## 列表页 → 详情页 → 返回 — 保留搜索状态（2026-05-21）✅
+
+之前 `/` 与 `/taxa` 列表页点详情后再 ←，搜索条件 / 翻页位置 / 结果全部丢
+失（因为 `<router-view>` 卸载列表组件、`onMounted` 重新跑空查询）。改用
+Vue Router 4 + `<keep-alive>` 让被纳入白名单的列表组件在切换路由时**只
+失活不卸载**：
+
+- `frontend/src/components/layout/AppShell.vue`：`<router-view>` 改为
+  `v-slot="{ Component }"` + `<keep-alive :include="['HomeView',
+  'TaxaSearchView']">`，仅缓存这两个列表页；详情页继续按原样卸载，避免
+  跨 `aphia_id` / `item_no` 残留旧内容。
+- `frontend/src/router/index.js`：新增 `scrollBehavior(to, from,
+  savedPosition)`，浏览器后退使用 `savedPosition` 恢复滚动条，前进/新跳
+  转回到顶部。
+- `frontend/src/views/HomeView.vue`：`defineOptions({ name: 'HomeView' })`
+  让 `<keep-alive :include>` 能匹配到组件；`onMounted` 增加守卫——已登录
+  时若 `search.hasResults` 跳过初次拉取，未登录时若 `anonItems.length`
+  跳过；新增 `watch(isAuthenticated)`，登录↔登出切换时主动拉取目标态数
+  据，登出时调用 `search.clearResults()` + `offset.value = 0`，避免缓存
+  在两种身份之间串。
+- `frontend/src/views/TaxaSearchView.vue`：`defineOptions({ name:
+  'TaxaSearchView' })`。其余状态本就是组件内 ref，`<keep-alive>` 一并
+  保留，无需改 onMounted。
+
+### 验证（Playwright）
+
+- `/taxa` 输入 `q=conus` + `family=Conidae` → 4 条结果 → 点 Conus
+  circumcisus → `/taxa/426455` → 浏览器 ← → 回到 `/taxa` 时 q/family/结
+  果列表/`pageInfo "1 – 20 / 97"` 全部保留。
+- `/`（已登录）输入 `q=conus` → 检索 → 下一页 → `pageInfo "13 – 24 /
+  6,114"` → 点第一张拍卖卡 → `/auctions/...` → ← → 回到 `/` 时 q/分页/
+  12 张卡片完整保留。
+- 登出后 `/` 立即切到匿名态：渲染 stat 网格 + "登录后查看更多" CTA + 12
+  条最近上拍，控制台 0 error / 0 warning。
 
 ---
 

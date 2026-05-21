@@ -39,7 +39,11 @@ watch(() => route.fullPath, () => { mobileOpen.value = false })
 
       <main class="flex-1 min-w-0">
         <div class="mx-auto w-full max-w-6xl px-4 sm:px-6 md:px-8 py-6 md:py-10 pb-12 md:pb-16">
-          <router-view />
+          <router-view v-slot="{ Component }">
+            <keep-alive :include="['HomeView', 'TaxaSearchView']">
+              <component :is="Component" />
+            </keep-alive>
+          </router-view>
         </div>
       </main>
 

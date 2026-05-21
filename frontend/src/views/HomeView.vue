@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSearchStore } from '@/stores/search'
 import { useAuthStore } from '@/stores/auth'
@@ -23,6 +23,8 @@ import AuctionCard from '@/components/auction/AuctionCard.vue'
 import AuctionTable from '@/components/auction/AuctionTable.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { cn, formatNumber } from '@/lib/utils'
+
+defineOptions({ name: 'HomeView' })
 
 const search = useSearchStore()
 const auth = useAuthStore()
@@ -146,8 +148,19 @@ onMounted(async () => {
   totalRecords.value = 2990337
   totalSold.value = 1727375
   if (isAuthenticated.value) {
+    if (!search.hasResults) await runSearch(true)
+  } else {
+    if (!anonItems.value.length) await loadAnonRecent()
+  }
+})
+
+watch(isAuthenticated, async (next, prev) => {
+  if (next === prev) return
+  if (next) {
     await runSearch(true)
   } else {
+    search.clearResults()
+    offset.value = 0
     await loadAnonRecent()
   }
 })

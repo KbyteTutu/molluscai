@@ -16,6 +16,8 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import TaxonName from '@/components/common/TaxonName.vue'
 import { formatNumber, cn } from '@/lib/utils'
 
+defineOptions({ name: 'TaxaSearchView' })
+
 const router = useRouter()
 
 const PAGE_SIZE = 20
@@ -85,7 +87,7 @@ onMounted(() => runSearch(true))
       <h1 class="font-serif text-3xl md:text-4xl font-semibold tracking-tight">物种检索</h1>
       <p class="inline-flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
         <ShieldAlert class="size-3.5 shrink-0" />
-        <span>使用须知：数据来源 WoRMS 数据库等公开渠道，仅供便捷集合查询使用，不得用于违法违规目的。</span>
+        <span>使用须知：数据来源 WoRMS 数据库等公开渠道，仅供便捷集合查询使用，不得用于违法违规目的。因AI算力开销，限制每小时智能查询次数。</span>
       </p>
       <p class="text-sm text-muted-foreground max-w-2xl leading-relaxed">
         基于 WoRMS / MolluscaBase 的软体动物分类数据库。支持拉丁学名模糊匹配、按科/属筛选、按阶元过滤。
