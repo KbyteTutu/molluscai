@@ -5,6 +5,7 @@ from app.models.document import Document
 from app.models.chunk import TextChunk, ImageChunk
 from app.models.billing import BillingRecord, PricingRule
 from app.models.model_config import ModelConfig, ModelUsageLog
+from app.models.feedback import Feedback
 
 __all__ = [
     "Base",
@@ -18,4 +19,5 @@ __all__ = [
     "PricingRule",
     "ModelConfig",
     "ModelUsageLog",
+    "Feedback",
 ]

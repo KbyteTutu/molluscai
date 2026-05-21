@@ -218,3 +218,21 @@ CREATE TABLE security_events (
     detail      JSONB,
     created_at  TIMESTAMPTZ DEFAULT now()
 );
+
+-- 5.8 User feedback
+
+CREATE TABLE feedbacks (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category    VARCHAR(20) NOT NULL,
+    content     TEXT NOT NULL,
+    status      VARCHAR(20) NOT NULL DEFAULT 'open',
+    admin_note  TEXT,
+    ip_address  INET,
+    user_agent  TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_feedbacks_user_created ON feedbacks (user_id, created_at DESC);
+CREATE INDEX idx_feedbacks_status_created ON feedbacks (status, created_at DESC);

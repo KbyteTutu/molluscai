@@ -7,9 +7,11 @@ from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import Permission, RequirePermission
+from app.api.v1.feedback import ALLOWED_CATEGORIES
 from app.database import get_db
 from app.models.user import User, RoleQuota, QueryLog
 from app.models.auction import Auction
+from app.models.feedback import Feedback
 from app.tasks.auction_scraper import scrape_incremental
 from app.tasks.embedding_job import embed_run, embed_cancel
 from app.tasks.image_downloader import download_sold_images
@@ -565,3 +567,133 @@ async def reset_user_password(
     target.password_hash = hash_password(payload.new_password)
     await db.commit()
     return {"ok": True, "user_id": str(target.id), "username": target.username}
+class AdminFeedbackOut(BaseModel):
+    id: int
+    user_id: str
+    username: Optional[str]
+    email: Optional[str]
+    category: str
+    content: str
+    status: str
+    admin_note: Optional[str]
+    ip_address: Optional[str]
+    user_agent: Optional[str]
+    created_at: str
+    updated_at: str
+
+
+class AdminFeedbackListResponse(BaseModel):
+    items: List[AdminFeedbackOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class AdminFeedbackUpdate(BaseModel):
+    status: Optional[str] = None
+    admin_note: Optional[str] = None
+
+    model_config = {"extra": "forbid"}
+
+
+ALLOWED_FEEDBACK_STATUSES = {"open", "acknowledged", "closed"}
+
+
+def _serialize_admin_feedback(fb: Feedback, u: Optional[User]) -> AdminFeedbackOut:
+    return AdminFeedbackOut(
+        id=fb.id,
+        user_id=str(fb.user_id) if fb.user_id else "",
+        username=u.username if u else None,
+        email=u.email if u else None,
+        category=fb.category,
+        content=fb.content,
+        status=fb.status,
+        admin_note=fb.admin_note,
+        ip_address=str(fb.ip_address) if fb.ip_address else None,
+        user_agent=fb.user_agent,
+        created_at=fb.created_at.isoformat() if fb.created_at else "",
+        updated_at=fb.updated_at.isoformat() if fb.updated_at else "",
+    )
+
+
+@router.get("/feedbacks", response_model=AdminFeedbackListResponse)
+async def list_feedbacks(
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    category: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    base = select(Feedback)
+    count_base = select(func.count(Feedback.id))
+
+    if status_filter:
+        base = base.where(Feedback.status == status_filter)
+        count_base = count_base.where(Feedback.status == status_filter)
+    if category:
+        if category not in ALLOWED_CATEGORIES:
+            raise HTTPException(status_code=400, detail=f"Invalid category: {category}")
+        base = base.where(Feedback.category == category)
+        count_base = count_base.where(Feedback.category == category)
+
+    total = (await db.execute(count_base)).scalar_one()
+    base = base.order_by(Feedback.created_at.desc()).limit(limit).offset(offset)
+    rows = (await db.execute(base)).scalars().all()
+
+    user_ids = {fb.user_id for fb in rows}
+    user_map = {}
+    if user_ids:
+        user_rows = (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars().all()
+        user_map = {u.id: u for u in user_rows}
+
+    return AdminFeedbackListResponse(
+        items=[_serialize_admin_feedback(fb, user_map.get(fb.user_id)) for fb in rows],
+        total=int(total),
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.patch("/feedbacks/{feedback_id}", response_model=AdminFeedbackOut)
+async def update_feedback(
+    feedback_id: int,
+    payload: AdminFeedbackUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    locked = await db.execute(
+        select(Feedback)
+        .where(Feedback.id == feedback_id)
+        .with_for_update()
+    )
+    fb = locked.scalar_one_or_none()
+    if fb is None:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    fields = payload.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    if "status" in fields:
+        new_status = fields["status"]
+        if new_status not in ALLOWED_FEEDBACK_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status. Allowed: {', '.join(sorted(ALLOWED_FEEDBACK_STATUSES))}",
+            )
+        fb.status = new_status
+
+    if "admin_note" in fields:
+        fb.admin_note = fields["admin_note"]
+
+    fb.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(fb)
+
+    user = None
+    if fb.user_id:
+        user_row = await db.execute(select(User).where(User.id == fb.user_id))
+        user = user_row.scalar_one_or_none()
+
+    return _serialize_admin_feedback(fb, user)

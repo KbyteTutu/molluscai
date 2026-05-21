@@ -129,11 +129,18 @@ export const adminApi = {
   recentQueries: (limit = 100) => apiClient.get('/admin/queries/recent', { params: { limit } }),
   listUsers: (params) => apiClient.get('/admin/users', { params }),
   updateUser: (id, data) => apiClient.patch(`/admin/users/${id}`, data),
-  resetUserPassword: (id, newPassword) => apiClient.post(`/admin/users/${id}/reset-password`, { new_password: newPassword })
+  resetUserPassword: (id, newPassword) => apiClient.post(`/admin/users/${id}/reset-password`, { new_password: newPassword }),
+  listFeedbacks: (params) => apiClient.get('/admin/feedbacks', { params }),
+  updateFeedback: (id, data) => apiClient.patch(`/admin/feedbacks/${id}`, data)
 }
 
 export const userApi = {
   myQuota: () => apiClient.get('/users/me/quota')
+}
+
+export const feedbackApi = {
+  create: (data) => apiClient.post('/feedback', data),
+  mine: (params) => apiClient.get('/feedback/me', { params })
 }
 
 export default apiClient

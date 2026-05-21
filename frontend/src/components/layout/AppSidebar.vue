@@ -1,9 +1,10 @@
 <script setup>
 import { computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Search, BookOpen, MessageCircle, Database, LogOut, User as UserIcon, ChevronRight, Dna, Cpu, Activity, Boxes, ListTodo, Gauge, ScrollText, Users } from 'lucide-vue-next'
+import { Search, BookOpen, MessageCircle, Database, LogOut, User as UserIcon, ChevronRight, Dna, Cpu, Activity, Boxes, ListTodo, Gauge, ScrollText, Users, MessageSquareHeart } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
+import FeedbackTrigger from '@/components/layout/FeedbackTrigger.vue'
 import ThemeToggle from '@/components/layout/ThemeToggle.vue'
 import Avatar from '@/components/ui/Avatar.vue'
 import Button from '@/components/ui/Button.vue'
@@ -79,7 +80,8 @@ const sections = computed(() => [
           { name: '用量统计', to: '/admin/usage', icon: Activity, enabled: true },
           { name: '配额管理', to: '/admin/quotas', icon: Gauge, enabled: true },
           { name: '查询日志', to: '/admin/queries', icon: ScrollText, enabled: true },
-          { name: '用户管理', to: '/admin/users', icon: Users, enabled: true }
+          { name: '用户管理', to: '/admin/users', icon: Users, enabled: true },
+          { name: '用户反馈', to: '/admin/feedbacks', icon: MessageSquareHeart, enabled: true }
         ]
       }]
     : [])
@@ -161,6 +163,8 @@ function logout() {
         <div :class="cn('h-full transition-all', aiQuotaTone)" :style="{ width: aiQuotaPercent + '%' }"></div>
       </div>
     </div>
+
+    <FeedbackTrigger v-if="isAuthed" />
 
     <div class="flex items-center gap-2 p-3">
       <DropdownMenu v-if="isAuthed">
