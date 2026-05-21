@@ -9,7 +9,7 @@ import TableCell from '@/components/ui/TableCell.vue'
 import Badge from '@/components/ui/Badge.vue'
 import TaxonName from '@/components/common/TaxonName.vue'
 import CompareToggle from '@/components/auction/CompareToggle.vue'
-import { formatPrice, formatDate } from '@/lib/utils'
+import { formatPrice, formatDate, xorId } from '@/lib/utils'
 
 defineProps({ items: { type: Array, default: () => [] } })
 const router = useRouter()
@@ -34,7 +34,7 @@ const router = useRouter()
         v-for="item in items"
         :key="item.item_no"
         class="cursor-pointer"
-        @click="router.push(`/auctions/${item.item_no}`)"
+        @click="router.push(`/auctions/${xorId(item.item_no)}`)"
       >
         <TableCell @click.stop>
           <CompareToggle :item="item" />

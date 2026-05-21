@@ -15,7 +15,7 @@ import TaxonName from '@/components/common/TaxonName.vue'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
 import { useCompareStore } from '@/stores/compare'
 import { useTaxonMatchStore } from '@/stores/taxonMatch'
-import { formatPrice, formatDate, imageUrls, originalAuctionUrl, xorId } from '@/lib/utils'
+import { formatPrice, formatDate, imageUrlsWithFallback, originalAuctionUrl, xorId, decodeXorId } from '@/lib/utils'
 import { toast } from 'vue-sonner'
 
 const route = useRoute()
@@ -28,8 +28,27 @@ const error = ref('')
 const copied = ref(false)
 
 const originalUrl = computed(() => item.value ? originalAuctionUrl(item.value.item_no) : '#')
-const imageList = computed(() => imageUrls(item.value || {}))
+const imageSources = computed(() => imageUrlsWithFallback(item.value || {}))
+const imageFailed = ref(new Set())
 const activeImage = ref(0)
+
+function currentSrc(idx) {
+  const s = imageSources.value[idx]
+  if (!s) return null
+  if (s.cached && !imageFailed.value.has('cached-' + idx)) return s.cached
+  if (s.origin && !imageFailed.value.has('origin-' + idx)) return s.origin
+  return null
+}
+
+function onImageError(idx) {
+  const s = imageSources.value[idx]
+  if (!s) return
+  if (s.cached && !imageFailed.value.has('cached-' + idx)) {
+    imageFailed.value = new Set([...imageFailed.value, 'cached-' + idx])
+  } else if (s.origin && !imageFailed.value.has('origin-' + idx)) {
+    imageFailed.value = new Set([...imageFailed.value, 'origin-' + idx])
+  }
+}
 
 const inCompare = computed(() => item.value && compare.has(item.value.item_no))
 
@@ -37,7 +56,8 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const { data } = await auctionApi.getDetail(route.params.itemNo)
+    const itemNo = decodeXorId(route.params.itemNo)
+    const { data } = await auctionApi.getDetail(itemNo)
     item.value = data
   } catch (e) {
     error.value = e.response?.status === 404 ? '未找到该拍品' : (e.response?.data?.detail || '加载失败')
@@ -65,7 +85,7 @@ function toggleCompare() {
   }
 }
 
-const itemNo = computed(() => Number(route.params.itemNo))
+const itemNo = computed(() => Number(decodeXorId(route.params.itemNo)))
 const taxon = computed(() => taxonMatch.get(itemNo.value))
 const taxonLoading = computed(() => taxonMatch.isLoading(itemNo.value))
 const taxonError = computed(() => taxonMatch.getError(itemNo.value))
@@ -115,17 +135,21 @@ onMounted(load)
     <div v-else-if="item" class="grid grid-cols-1 lg:grid-cols-5 gap-8">
       <div class="lg:col-span-2 space-y-3">
         <Card class="aspect-square bg-muted/40 flex items-center justify-center overflow-hidden">
-          <img v-if="imageList.length" :src="imageList[activeImage]" :alt="item.name" class="h-full w-full object-contain" />
+          <img v-if="currentSrc(activeImage)" :src="currentSrc(activeImage)" :alt="item.name" class="h-full w-full object-contain" @error="onImageError(activeImage)" />
+          <div v-else-if="imageSources.length" class="text-center px-6 space-y-2">
+            <span class="text-muted-foreground text-sm">图片源已被删除，不可用</span>
+          </div>
           <ShellLogo v-else :size="96" class="text-muted-foreground/30" />
         </Card>
-        <div v-if="imageList.length > 1" class="grid grid-cols-5 gap-2">
+        <div v-if="imageSources.length > 1" class="grid grid-cols-5 gap-2">
           <button
-            v-for="(src, i) in imageList"
+            v-for="(s, i) in imageSources"
             :key="i"
             :class="['aspect-square rounded border overflow-hidden transition-all', i === activeImage ? 'border-primary ring-2 ring-primary/30' : 'border-border opacity-60 hover:opacity-100']"
             @click="activeImage = i"
           >
-            <img :src="src" class="h-full w-full object-cover" />
+            <img v-if="currentSrc(i)" :src="currentSrc(i)" class="h-full w-full object-cover" @error="onImageError(i)" />
+            <div v-else class="h-full w-full flex items-center justify-center bg-muted text-[10px] text-muted-foreground">不可用</div>
           </button>
         </div>
 
@@ -278,7 +302,7 @@ onMounted(load)
         </Card>
 
         <div class="flex flex-wrap items-center gap-2">
-          <a :href="originalUrl" target="_blank" rel="noopener noreferrer">
+          <a v-if="!item.is_sold" :href="originalUrl" target="_blank" rel="noopener noreferrer">
             <Button variant="default" size="sm">
               <ExternalLink class="size-4" /> 访问原始拍品页面
             </Button>

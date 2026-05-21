@@ -27,6 +27,7 @@ export function formatDate(s) {
 }
 
 const SHELL_IMAGE_BASE = 'https://shellauction.net/'
+const MINIO_BASE = '/minio/'
 
 function isPresentablePath(p) {
   if (!p) return false
@@ -37,7 +38,13 @@ function isPresentablePath(p) {
 }
 
 export function imageUrls(item) {
+  const locals = item?.images_local
   const origins = item?.images_origin
+
+  if (Array.isArray(locals) && locals.length) {
+    return locals.map(p => MINIO_BASE + p)
+  }
+
   if (!Array.isArray(origins) || !origins.length) return []
   const seen = new Set()
   const out = []
@@ -54,12 +61,43 @@ export function imageUrls(item) {
   return out
 }
 
+export function imageUrlsWithFallback(item) {
+  const locals = item?.images_local
+  const origins = item?.images_origin
+
+  const cachedUrls = Array.isArray(locals) && locals.length
+    ? locals.map(p => MINIO_BASE + p)
+    : []
+
+  const originUrls = []
+  if (Array.isArray(origins) && origins.length) {
+    const seen = new Set()
+    for (const raw of origins) {
+      for (const part of raw.split(';')) {
+        const p = part.trim()
+        if (!isPresentablePath(p)) continue
+        const url = SHELL_IMAGE_BASE + p.replace(/^\//, '')
+        if (!seen.has(url)) { seen.add(url); originUrls.push(url) }
+      }
+    }
+  }
+
+  const len = Math.max(cachedUrls.length, originUrls.length)
+  const out = []
+  for (let i = 0; i < len; i++) {
+    out.push({ cached: cachedUrls[i] || null, origin: originUrls[i] || null })
+  }
+  return out
+}
+
 export function firstImageUrl(item) {
+  const locals = item?.images_local
+  if (Array.isArray(locals) && locals.length) return MINIO_BASE + locals[0]
   return imageUrls(item)[0] || null
 }
 
 export function originalAuctionUrl(itemNo) {
-  return `${SHELL_IMAGE_BASE}auction_shell.php?id=${itemNo}&pres=1`
+  return `${SHELL_IMAGE_BASE}auction_shell.php?id=${xorId(itemNo)}&pres=1`
 }
 
 const XOR_KEY = 'tukechao'
@@ -71,4 +109,13 @@ export function xorId(itemNo) {
     result += (s.charCodeAt(i) ^ XOR_KEY.charCodeAt(i % XOR_KEY.length)).toString(16).padStart(2, '0')
   }
   return result.toUpperCase()
+}
+
+export function decodeXorId(encoded) {
+  let result = ''
+  for (let i = 0; i < encoded.length; i += 2) {
+    const code = parseInt(encoded.substr(i, 2), 16) ^ XOR_KEY.charCodeAt((i / 2) % XOR_KEY.length)
+    result += String.fromCharCode(code)
+  }
+  return result
 }

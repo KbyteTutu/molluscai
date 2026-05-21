@@ -9,7 +9,7 @@ import Badge from '@/components/ui/Badge.vue'
 import TaxonName from '@/components/common/TaxonName.vue'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { formatPrice, formatDate, firstImageUrl, originalAuctionUrl } from '@/lib/utils'
+import { formatPrice, formatDate, firstImageUrl, originalAuctionUrl, xorId } from '@/lib/utils'
 
 const store = useCompareStore()
 const router = useRouter()
@@ -131,7 +131,7 @@ const priceMin = computed(() => {
 
         <div></div>
         <div v-for="item in store.items" :key="'actions-' + item.item_no" class="flex flex-col gap-1.5">
-          <Button variant="outline" size="sm" class="w-full" @click="router.push(`/auctions/${item.item_no}`)">
+          <Button variant="outline" size="sm" class="w-full" @click="router.push(`/auctions/${xorId(item.item_no)}`)">
             查看详情
           </Button>
           <a :href="originalAuctionUrl(item.item_no)" target="_blank" rel="noopener noreferrer" class="block">

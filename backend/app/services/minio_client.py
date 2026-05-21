@@ -1,3 +1,4 @@
+import json
 from io import BytesIO
 from typing import Optional
 
@@ -25,6 +26,16 @@ def ensure_bucket(bucket: str) -> None:
     client = get_minio()
     if not client.bucket_exists(bucket):
         client.make_bucket(bucket)
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"AWS": ["*"]},
+                "Action": ["s3:GetObject"],
+                "Resource": [f"arn:aws:s3:::{bucket}/*"],
+            }],
+        }
+        client.set_bucket_policy(bucket, json.dumps(policy))
 
 
 def put_bytes(bucket: str, object_name: str, data: bytes, content_type: str = "application/octet-stream") -> str:
