@@ -32,16 +32,35 @@ watch(() => route.fullPath, () => { mobileOpen.value = false })
           <Menu class="size-5" />
         </Button>
         <div class="flex items-center gap-2">
-          <ShellLogo :size="20" class="text-primary" />
+          <ShellLogo :size="30" class="text-primary" />
           <span class="font-serif text-base font-semibold tracking-tight">MolluscAI</span>
         </div>
       </header>
 
       <main class="flex-1 min-w-0">
-        <div class="mx-auto w-full max-w-6xl px-4 sm:px-6 md:px-8 py-6 md:py-10 pb-24 md:pb-24">
+        <div class="mx-auto w-full max-w-6xl px-4 sm:px-6 md:px-8 py-6 md:py-10 pb-12 md:pb-16">
           <router-view />
         </div>
       </main>
+
+      <footer class="border-t bg-background/60">
+        <div class="mx-auto w-full max-w-6xl px-4 sm:px-6 md:px-8 py-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          <span>© 2026</span>
+          <a
+            href="https://beian.miit.gov.cn/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="hover:text-foreground transition-colors"
+          >京ICP备2022009849号</a>
+          <span class="text-muted-foreground/40">·</span>
+          <a
+            href="https://tutu.gold"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="hover:text-foreground transition-colors"
+          >tutu.gold</a>
+        </div>
+      </footer>
     </div>
 
     <CompareBar />

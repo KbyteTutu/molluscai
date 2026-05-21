@@ -76,7 +76,7 @@ async function doRegister() {
 
 <template>
   <div class="min-h-screen flex items-center justify-center bg-background relative overflow-hidden p-4">
-    <div class="absolute -top-24 -right-24 text-primary/5 pointer-events-none">
+    <div class="absolute -top-24 -right-24 opacity-5 pointer-events-none">
       <ShellLogo :size="480" />
     </div>
     <div class="absolute top-4 right-4">

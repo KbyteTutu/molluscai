@@ -2,7 +2,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { taxaApi } from '@/api'
-import { Search, ChevronRight, Sparkles, Type, History, Languages } from 'lucide-vue-next'
+import { Search, ChevronRight, Sparkles, Type, History, Languages, ShieldAlert } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import CardContent from '@/components/ui/CardContent.vue'
 import Input from '@/components/ui/Input.vue'
@@ -81,8 +81,12 @@ onMounted(() => runSearch(true))
 
 <template>
   <div class="space-y-8 md:space-y-10">
-    <header class="space-y-3">
+    <header class="space-y-2">
       <h1 class="font-serif text-3xl md:text-4xl font-semibold tracking-tight">物种检索</h1>
+      <p class="inline-flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+        <ShieldAlert class="size-3.5 shrink-0" />
+        <span>使用须知：数据来源 WoRMS 数据库等公开渠道，仅供便捷集合查询使用，不得用于违法违规目的。</span>
+      </p>
       <p class="text-sm text-muted-foreground max-w-2xl leading-relaxed">
         基于 WoRMS / MolluscaBase 的软体动物分类数据库。支持拉丁学名模糊匹配、按科/属筛选、按阶元过滤。
         <span class="text-muted-foreground/70">Taxonomic data: WoRMS Editorial Board. World Register of Marine Species. Available from https://www.marinespecies.org at VLIZ.</span>

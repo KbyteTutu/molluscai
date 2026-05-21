@@ -52,7 +52,7 @@ const SORT_OPTIONS = [
   { value: 'item_no_desc', label: '编号 · 最新优先' }
 ]
 
-const PAGE_SIZE = 10
+const PAGE_SIZE = 12
 const offset = ref(0)
 const totalRecords = ref(null)
 const totalSold = ref(null)

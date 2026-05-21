@@ -22,10 +22,10 @@ const isSuperadmin = computed(() => authStore.currentUser?.role === 'superadmin'
 
 const sections = computed(() => [
   {
-    label: '检索',
+    label: '软体数据库',
     items: [
       { name: '拍卖记录', to: '/', icon: Search, enabled: true },
-      { name: '物种分类', to: '/taxa', icon: Dna, enabled: true }
+      { name: '物种检索', to: '/taxa', icon: Dna, enabled: true }
     ]
   },
   {
@@ -69,7 +69,7 @@ function logout() {
   <aside class="flex h-screen w-60 shrink-0 flex-col border-r bg-card">
     <div class="flex items-center justify-between px-5 py-5">
       <div class="flex items-center gap-2">
-        <ShellLogo :size="22" class="text-primary" />
+        <ShellLogo :size="33" class="text-primary" />
         <div class="leading-tight">
           <div class="font-serif text-lg font-semibold tracking-tight">MolluscAI</div>
           <div class="text-[11px] text-muted-foreground">软体动物学知识检索</div>
