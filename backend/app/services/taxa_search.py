@@ -2,6 +2,14 @@
 Hybrid taxa search: lexical (pg_trgm) + vector (pgvector) fused by RRF,
 optionally reranked by a cross-encoder.
 
+Lexical pool searches three sources and resolves every match to an accepted
+taxon's aphia_id, with provenance annotation:
+    * taxa.scientificname           -> kind="name"
+    * taxa_synonyms.scientificname  -> kind="synonym"      (resolves to parent aphia_id)
+    * taxa_vernaculars.vernacular   -> kind="vernacular"   (resolves to parent aphia_id)
+
+Match priority on dedup: name > synonym > vernacular.
+
 RRF (Reciprocal Rank Fusion) is parameter-free and robust against differing
 score distributions between lexical trgm similarity and cosine distance.
 """
@@ -9,13 +17,13 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.taxon import TaxonRead, TaxonSearchResponse
+from app.schemas.taxon import TaxonMatchInfo, TaxonRead, TaxonSearchResponse
 from app.services.llm_providers import (
     compose_taxon_text,
     get_embedding_provider,
@@ -29,6 +37,8 @@ LEXICAL_K = 50
 VECTOR_K = 50
 RRF_K = 60
 RERANK_CANDIDATES = 30
+
+MATCH_PRIORITY = {"name": 0, "synonym": 1, "vernacular": 2}
 
 
 async def _pick_active(db: AsyncSession, purpose: str) -> Optional[dict]:
@@ -70,24 +80,105 @@ def _cost(input_tokens: int, price: Optional[Decimal], unit: str) -> Decimal:
     return Decimal("0")
 
 
-async def _lexical_ids(db: AsyncSession, q: str, rank: Optional[str],
-                       family: Optional[str], genus: Optional[str]) -> list[int]:
-    clauses = ["(scientificname ILIKE :qlike OR scientificname % :q)"]
-    params: dict = {"q": q, "qlike": f"{q}%", "lim": LEXICAL_K}
+async def _lexical_with_match(
+    db: AsyncSession,
+    q: str,
+    rank: Optional[str],
+    family: Optional[str],
+    genus: Optional[str],
+    status: Optional[str] = None,
+) -> list[tuple[int, dict[str, Any]]]:
+    qlike = f"{q}%"
+    rank_clause = "AND t.rank = :rank" if rank else ""
+    family_clause = "AND t.family ILIKE :family" if family else ""
+    genus_clause = "AND t.genus ILIKE :genus" if genus else ""
+    status_clause = "AND t.status = :status" if status else ""
+
+    params: dict[str, Any] = {"q": q, "qlike": qlike, "lim": LEXICAL_K}
     if rank:
-        clauses.append("rank = :rank"); params["rank"] = rank
+        params["rank"] = rank
     if family:
-        clauses.append("family ILIKE :family"); params["family"] = f"{family}%"
+        params["family"] = f"{family}%"
     if genus:
-        clauses.append("genus ILIKE :genus"); params["genus"] = f"{genus}%"
-    where = " AND ".join(clauses)
-    rows = (await db.execute(
-        text(f"""SELECT aphia_id FROM taxa WHERE {where}
-                 ORDER BY similarity(scientificname, :q) DESC
-                 LIMIT :lim"""),
+        params["genus"] = f"{genus}%"
+    if status:
+        params["status"] = status
+
+    name_rows = (await db.execute(
+        text(f"""
+            SELECT t.aphia_id, t.scientificname AS term, t.authority,
+                   similarity(t.scientificname, :q) AS sim, t.status
+            FROM taxa t
+            WHERE (t.scientificname ILIKE :qlike OR t.scientificname % :q)
+              {rank_clause} {family_clause} {genus_clause} {status_clause}
+            ORDER BY sim DESC
+            LIMIT :lim
+        """),
         params,
     )).fetchall()
-    return [int(r[0]) for r in rows]
+
+    syn_rows = (await db.execute(
+        text(f"""
+            SELECT t.aphia_id, s.scientificname AS term, s.authority,
+                   similarity(s.scientificname, :q) AS sim, t.status
+            FROM taxa_synonyms s
+            JOIN taxa t ON t.aphia_id = s.aphia_id
+            WHERE (s.scientificname ILIKE :qlike OR s.scientificname % :q)
+              {rank_clause} {family_clause} {genus_clause} {status_clause}
+            ORDER BY sim DESC
+            LIMIT :lim
+        """),
+        params,
+    )).fetchall()
+
+    vern_rows = (await db.execute(
+        text(f"""
+            SELECT t.aphia_id, v.vernacular AS term, v.language_code,
+                   similarity(v.vernacular, :q) AS sim, t.status
+            FROM taxa_vernaculars v
+            JOIN taxa t ON t.aphia_id = v.aphia_id
+            WHERE (v.vernacular ILIKE :qlike OR v.vernacular % :q)
+              {rank_clause} {family_clause} {genus_clause} {status_clause}
+            ORDER BY sim DESC
+            LIMIT :lim
+        """),
+        params,
+    )).fetchall()
+
+    by_aphia: dict[int, tuple[float, str, dict[str, Any]]] = {}
+
+    def _consider(aid: int, sim: float, taxon_status: str, info: dict[str, Any]) -> None:
+        existing = by_aphia.get(aid)
+        if existing is None:
+            by_aphia[aid] = (sim, taxon_status or "", info)
+            return
+        old_sim, _, old_info = existing
+        old_pri = MATCH_PRIORITY[old_info["kind"]]
+        new_pri = MATCH_PRIORITY[info["kind"]]
+        if new_pri < old_pri or (new_pri == old_pri and sim > old_sim):
+            by_aphia[aid] = (sim, taxon_status or "", info)
+
+    for r in name_rows:
+        _consider(int(r[0]), float(r[3] or 0.0), r[4] or "",
+                  {"kind": "name", "term": r[1], "authority": r[2]})
+    for r in syn_rows:
+        _consider(int(r[0]), float(r[3] or 0.0), r[4] or "",
+                  {"kind": "synonym", "term": r[1], "authority": r[2]})
+    for r in vern_rows:
+        _consider(int(r[0]), float(r[3] or 0.0), r[4] or "",
+                  {"kind": "vernacular", "term": r[1], "language": r[2]})
+
+    return sorted(
+        ((aid, info) for aid, (_sim, _st, info) in by_aphia.items()),
+        key=lambda kv: (0 if by_aphia[kv[0]][1] == "accepted" else 1, -by_aphia[kv[0]][0]),
+    )
+
+
+async def _lexical_ids(db: AsyncSession, q: str, rank: Optional[str],
+                       family: Optional[str], genus: Optional[str],
+                       status: Optional[str] = None) -> list[int]:
+    pairs = await _lexical_with_match(db, q, rank, family, genus, status)
+    return [aid for aid, _ in pairs]
 
 
 async def _vector_ids(db: AsyncSession, model_name: str, query_vec: list[float],
@@ -141,15 +232,40 @@ async def _load_taxa(db: AsyncSession, aphia_ids: list[int]) -> dict[int, dict]:
     return {int(r._mapping["aphia_id"]): dict(r._mapping) for r in rows}
 
 
+def _attach_match(item: dict, match_map: dict[int, dict[str, Any]]) -> dict:
+    info = match_map.get(int(item["aphia_id"]))
+    if info is None:
+        return item
+    return {**item, "match_info": TaxonMatchInfo(**info)}
+
+
+async def lexical_search(*, db: AsyncSession, q: str,
+                         rank: Optional[str], family: Optional[str], genus: Optional[str],
+                         status: Optional[str] = None,
+                         offset: int, limit: int) -> TaxonSearchResponse:
+    pairs = await _lexical_with_match(db, q, rank, family, genus, status)
+    ids = [aid for aid, _ in pairs]
+    match_map = {aid: info for aid, info in pairs}
+    pool = await _load_taxa(db, ids)
+    items = [_attach_match(pool[i], match_map) for i in ids if i in pool][offset: offset + limit]
+    return TaxonSearchResponse(
+        items=[TaxonRead.model_validate(i) for i in items],
+        total=len(ids), offset=offset, limit=limit,
+    )
+
+
 async def hybrid_search(*, db: AsyncSession, user_id: Optional[UUID], q: str,
                         rank: Optional[str], family: Optional[str], genus: Optional[str],
+                        status: Optional[str] = None,
                         offset: int, limit: int) -> TaxonSearchResponse:
     emb_cfg = await _pick_active(db, "embedding")
     if emb_cfg is None:
         log.info("hybrid requested but no active embedding model; falling back to lexical")
-        ids = await _lexical_ids(db, q, rank, family, genus)
+        pairs = await _lexical_with_match(db, q, rank, family, genus, status)
+        ids = [aid for aid, _ in pairs]
+        match_map = {aid: info for aid, info in pairs}
         pool = await _load_taxa(db, ids)
-        items = [pool[i] for i in ids if i in pool][offset: offset + limit]
+        items = [_attach_match(pool[i], match_map) for i in ids if i in pool][offset: offset + limit]
         return TaxonSearchResponse(
             items=[TaxonRead.model_validate(i) for i in items],
             total=len(ids), offset=offset, limit=limit,
@@ -167,9 +283,11 @@ async def hybrid_search(*, db: AsyncSession, user_id: Optional[UUID], q: str,
                          purpose="embedding", user_id=user_id, input_tokens=0,
                          latency_ms=0, cost=Decimal("0"), status="error", error=str(e)[:300])
         await db.commit()
-        ids = await _lexical_ids(db, q, rank, family, genus)
+        pairs = await _lexical_with_match(db, q, rank, family, genus, status)
+        ids = [aid for aid, _ in pairs]
+        match_map = {aid: info for aid, info in pairs}
         pool = await _load_taxa(db, ids)
-        items = [pool[i] for i in ids if i in pool][offset: offset + limit]
+        items = [_attach_match(pool[i], match_map) for i in ids if i in pool][offset: offset + limit]
         return TaxonSearchResponse(
             items=[TaxonRead.model_validate(i) for i in items],
             total=len(ids), offset=offset, limit=limit,
@@ -182,8 +300,10 @@ async def hybrid_search(*, db: AsyncSession, user_id: Optional[UUID], q: str,
                      cost=_cost(er.input_tokens, emb_cfg.get("price_input"),
                                 emb_cfg.get("price_unit") or "per_1k_tokens"))
 
-    lex_ids, vec_ids = await _lexical_ids(db, q, rank, family, genus), \
-                       await _vector_ids(db, emb_cfg["model_name"], qvec, rank, family, genus)
+    lex_pairs = await _lexical_with_match(db, q, rank, family, genus, status)
+    lex_ids = [aid for aid, _ in lex_pairs]
+    match_map = {aid: info for aid, info in lex_pairs}
+    vec_ids = await _vector_ids(db, emb_cfg["model_name"], qvec, rank, family, genus)
     fused = _rrf_fuse(lex_ids, vec_ids)[:RERANK_CANDIDATES]
     pool = await _load_taxa(db, fused)
 
@@ -214,7 +334,7 @@ async def hybrid_search(*, db: AsyncSession, user_id: Optional[UUID], q: str,
         ordered = [pool[i] for i in fused if i in pool]
 
     total = len(ordered)
-    page = ordered[offset: offset + limit]
+    page = [_attach_match(item, match_map) for item in ordered[offset: offset + limit]]
     await db.commit()
     return TaxonSearchResponse(
         items=[TaxonRead.model_validate(i) for i in page],

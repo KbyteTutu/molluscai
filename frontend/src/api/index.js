@@ -73,7 +73,13 @@ export const auctionApi = {
 
 export const taxaApi = {
   search: (params) => apiClient.get('/taxa/search', { params }),
-  getDetail: (aphiaId) => apiClient.get(`/taxa/${aphiaId}`)
+  getDetail: (aphiaId) => apiClient.get(`/taxa/${aphiaId}`),
+  getSynonyms: (aphiaId) => apiClient.get(`/taxa/${aphiaId}/synonyms`),
+  getVernaculars: (aphiaId) => apiClient.get(`/taxa/${aphiaId}/vernaculars`),
+  getDistributions: (aphiaId) => apiClient.get(`/taxa/${aphiaId}/distributions`),
+  getChildren: (aphiaId, params) => apiClient.get(`/taxa/${aphiaId}/children`, { params }),
+  getClassification: (aphiaId) => apiClient.get(`/taxa/${aphiaId}/classification`),
+  getExternalIds: (aphiaId) => apiClient.get(`/taxa/${aphiaId}/external-ids`)
 }
 
 export const adminApi = {

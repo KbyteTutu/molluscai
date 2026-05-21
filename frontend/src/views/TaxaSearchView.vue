@@ -2,7 +2,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { taxaApi } from '@/api'
-import { Search, ChevronRight, Sparkles, Type } from 'lucide-vue-next'
+import { Search, ChevronRight, Sparkles, Type, History, Languages } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import CardContent from '@/components/ui/CardContent.vue'
 import Input from '@/components/ui/Input.vue'
@@ -24,6 +24,7 @@ const mode = ref('lexical')
 const rank = ref('')
 const family = ref('')
 const genus = ref('')
+const status = ref('')
 const offset = ref(0)
 
 const items = ref([])
@@ -32,6 +33,7 @@ const loading = ref(false)
 const error = ref('')
 
 const RANKS = ['', 'Species', 'Genus', 'Family', 'Order', 'Class', 'Phylum']
+const STATUSES = ['', 'accepted', 'unaccepted', 'superseded combination', 'nomen dubium', 'taxon inquirendum']
 
 const pageInfo = computed(() => {
   if (total.value === 0) return ''
@@ -50,6 +52,7 @@ async function runSearch(reset = true) {
     if (rank.value) params.rank = rank.value
     if (family.value.trim()) params.family = family.value.trim()
     if (genus.value.trim()) params.genus = genus.value.trim()
+    if (status.value) params.status = status.value
     const { data } = await taxaApi.search(params)
     items.value = data.items
     total.value = data.total
@@ -91,7 +94,7 @@ onMounted(() => runSearch(true))
         <form @submit.prevent="runSearch(true)" class="flex flex-col sm:flex-row items-stretch gap-2">
           <div class="relative flex-1">
             <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input v-model="q" placeholder="学名片段，如 Conus、aurisiacus、cypraea…" class="pl-9 h-10" />
+            <Input v-model="q" placeholder="学名、曾用名 或 各语言俗名，如 Conus、Loricata、chiton…" class="pl-9 h-10" />
           </div>
           <div class="inline-flex items-center rounded-md border bg-card p-0.5 shrink-0">
             <button
@@ -117,11 +120,17 @@ onMounted(() => runSearch(true))
             {{ loading ? '检索中…' : '检索' }}
           </Button>
         </form>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
           <label class="flex items-center gap-2">
             <span class="text-xs text-muted-foreground shrink-0 w-10">阶元</span>
             <select v-model="rank" @change="runSearch(true)" class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs">
               <option v-for="r in RANKS" :key="r" :value="r">{{ r || '全部' }}</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2">
+            <span class="text-xs text-muted-foreground shrink-0 w-10">状态</span>
+            <select v-model="status" @change="runSearch(true)" class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs">
+              <option v-for="s in STATUSES" :key="s" :value="s">{{ s || '全部' }}</option>
             </select>
           </label>
           <label class="flex items-center gap-2">
@@ -163,10 +172,32 @@ onMounted(() => runSearch(true))
           class="flex items-center gap-4 w-full px-4 py-3 text-left hover:bg-accent/50 transition-colors"
           @click="router.push(`/taxa/${t.aphia_id}`)"
         >
+          <Badge
+            :variant="t.status === 'accepted' ? 'default' : 'muted'"
+            class="text-[10px] uppercase tracking-wider shrink-0 w-[4.5rem] justify-center"
+          >{{ t.status === 'accepted' ? 'accepted' : t.status || '—' }}</Badge>
           <div class="flex-1 min-w-0">
             <div class="flex items-baseline gap-2 flex-wrap">
               <TaxonName :name="t.scientificname" class="text-sm" />
               <span v-if="t.authority" class="text-xs text-muted-foreground font-serif not-italic">{{ t.authority }}</span>
+            </div>
+            <div
+              v-if="t.match_info && t.match_info.kind === 'synonym'"
+              class="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-amber-100 dark:bg-amber-950/60 px-2 py-1 text-xs text-amber-900 dark:text-amber-200 ring-1 ring-amber-300 dark:ring-amber-800/60"
+            >
+              <History class="size-3.5 shrink-0" />
+              <span>命中曾用名:&nbsp;</span>
+              <em class="font-serif font-semibold not-italic">{{ t.match_info.term }}</em>
+              <span v-if="t.match_info.authority" class="text-amber-700 dark:text-amber-400/80 font-serif not-italic">{{ t.match_info.authority }}</span>
+            </div>
+            <div
+              v-else-if="t.match_info && t.match_info.kind === 'vernacular'"
+              class="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-sky-100 dark:bg-sky-950/60 px-2 py-1 text-xs text-sky-900 dark:text-sky-200 ring-1 ring-sky-300 dark:ring-sky-800/60"
+            >
+              <Languages class="size-3.5 shrink-0" />
+              <span>命中俗名:&nbsp;</span>
+              <em class="font-semibold not-italic">{{ t.match_info.term }}</em>
+              <span v-if="t.match_info.language" class="text-sky-700 dark:text-sky-400/80 uppercase tracking-wider text-[10px]">{{ t.match_info.language }}</span>
             </div>
             <div class="mt-0.5 text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
               <span v-if="t.rank" class="uppercase tracking-wider text-[10px]">{{ t.rank }}</span>
