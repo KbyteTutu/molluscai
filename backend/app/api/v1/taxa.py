@@ -1,8 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.core.quota import (
+    QUERY_TYPE_AI,
+    QUERY_TYPE_TAXA,
+    check_quota,
+    log_query,
+)
+from app.core.request_ip import get_client_ip
 from app.models.user import User
 from app.schemas.taxon import (
     TaxonChild,
@@ -23,6 +30,7 @@ SEARCHABLE_RANKS = ["Species", "Genus", "Family", "Order", "Class", "Phylum", "K
 
 @router.get("/search", response_model=TaxonSearchResponse)
 async def search_taxa(
+    request: Request,
     q: str = Query("", description="Name fragment (matches scientific name, 曾用名/synonym, or vernacular)"),
     mode: str = Query("lexical", pattern="^(lexical|hybrid)$"),
     rank: str | None = Query(None),
@@ -34,61 +42,93 @@ async def search_taxa(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if mode == "hybrid" and q.strip():
-        return await hybrid_search(
-            db=db, user_id=current_user.id, q=q.strip(),
-            rank=rank, family=family, genus=genus, status=status,
-            offset=offset, limit=limit,
-        )
+    is_ai = mode == "hybrid" and bool(q.strip())
+    query_type = QUERY_TYPE_AI if is_ai else QUERY_TYPE_TAXA
 
-    if q and len(q.strip()) >= 2:
-        return await lexical_search(
-            db=db, q=q.strip(),
-            rank=rank, family=family, genus=genus, status=status,
-            offset=offset, limit=limit,
-        )
-
-    clauses: list[str] = []
-    params: dict[str, object] = {"offset": offset, "limit": limit}
-    if rank:
-        clauses.append("rank = :rank")
-        params["rank"] = rank
-    if family:
-        clauses.append("family ILIKE :family")
-        params["family"] = f"{family}%"
-    if genus:
-        clauses.append("genus ILIKE :genus")
-        params["genus"] = f"{genus}%"
-    if status:
-        clauses.append("status = :status")
-        params["status"] = status
-    where_sql = "WHERE " + " AND ".join(clauses) if clauses else ""
-
-    total_row = await db.execute(text(f"SELECT COUNT(*) AS n FROM taxa {where_sql}"), params)
-    total = total_row.scalar_one()
-
-    rows = await db.execute(
-        text(f"""
-            SELECT aphia_id, scientificname, authority, rank, status,
-                valid_aphia_id, valid_name,
-                kingdom, phylum, subphylum, class, subclass, infraclass,
-                superorder, "order", suborder, infraorder, superfamily,
-                family, genus, species_epithet,
-                is_marine, is_brackish, is_freshwater, is_terrestrial, is_extinct,
-                citation, url, data_source, last_synced_at
-            FROM taxa {where_sql}
-            ORDER BY scientificname ASC
-            OFFSET :offset LIMIT :limit
-        """),
-        params,
+    await check_quota(
+        db, current_user, query_type,
+        request=request,
+        query_text=f"mode={mode} q={q}"[:200],
     )
-    items = [dict(r._mapping) for r in rows]
-    return TaxonSearchResponse(
-        items=[TaxonRead.model_validate(i) for i in items],
-        total=total,
-        offset=offset,
-        limit=limit,
-    )
+
+    response: TaxonSearchResponse | None = None
+    status_code = 200
+    try:
+        if is_ai:
+            response = await hybrid_search(
+                db=db, user_id=current_user.id, q=q.strip(),
+                rank=rank, family=family, genus=genus, status=status,
+                offset=offset, limit=limit,
+            )
+            return response
+
+        if q and len(q.strip()) >= 2:
+            response = await lexical_search(
+                db=db, q=q.strip(),
+                rank=rank, family=family, genus=genus, status=status,
+                offset=offset, limit=limit,
+            )
+            return response
+
+        clauses: list[str] = []
+        params: dict[str, object] = {"offset": offset, "limit": limit}
+        if rank:
+            clauses.append("rank = :rank")
+            params["rank"] = rank
+        if family:
+            clauses.append("family ILIKE :family")
+            params["family"] = f"{family}%"
+        if genus:
+            clauses.append("genus ILIKE :genus")
+            params["genus"] = f"{genus}%"
+        if status:
+            clauses.append("status = :status")
+            params["status"] = status
+        where_sql = "WHERE " + " AND ".join(clauses) if clauses else ""
+
+        total_row = await db.execute(text(f"SELECT COUNT(*) AS n FROM taxa {where_sql}"), params)
+        total = total_row.scalar_one()
+
+        rows = await db.execute(
+            text(f"""
+                SELECT aphia_id, scientificname, authority, rank, status,
+                    valid_aphia_id, valid_name,
+                    kingdom, phylum, subphylum, class, subclass, infraclass,
+                    superorder, "order", suborder, infraorder, superfamily,
+                    family, genus, species_epithet,
+                    is_marine, is_brackish, is_freshwater, is_terrestrial, is_extinct,
+                    citation, url, data_source, last_synced_at
+                FROM taxa {where_sql}
+                ORDER BY scientificname ASC
+                OFFSET :offset LIMIT :limit
+            """),
+            params,
+        )
+        items = [dict(r._mapping) for r in rows]
+        response = TaxonSearchResponse(
+            items=[TaxonRead.model_validate(i) for i in items],
+            total=total,
+            offset=offset,
+            limit=limit,
+        )
+        return response
+    except HTTPException as e:
+        status_code = e.status_code
+        raise
+    except Exception:
+        status_code = 500
+        raise
+    finally:
+        if status_code < 500:
+            await log_query(
+                db,
+                user=current_user,
+                query_type=query_type,
+                query_text=f"mode={mode} q={q} rank={rank} family={family} genus={genus} status={status} offset={offset} limit={limit}"[:500],
+                result_count=response.total if response else 0,
+                ip_address=get_client_ip(request),
+                status_code=status_code,
+            )
 
 
 @router.get("/{aphia_id}", response_model=TaxonRead)

@@ -1,26 +1,20 @@
-"""
-FastAPI dependency injection for authentication, authorization, and quota checks.
-Matches design.md section 5.1 exactly.
-"""
-
 from enum import Flag, auto
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.quota import check_quota, log_query
 from app.core.security import verify_token
 from app.database import get_db
-from app.models.user import QueryLog, RoleQuota, User
+from app.models.user import User
 
 security_scheme = HTTPBearer()
-
-
-# ─── Permission Flags ───────────────────────────────────────
+optional_security_scheme = HTTPBearer(auto_error=False)
 
 
 class Permission(Flag):
@@ -50,14 +44,10 @@ ROLE_PERMISSIONS: dict[str, Permission] = {
 }
 
 
-# ─── Dependency Helpers ─────────────────────────────────────
-
-
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Extract and validate JWT from Authorization Bearer header, fetch user from DB."""
     try:
         payload = verify_token(credentials.credentials, token_type="access")
         user_id: Optional[str] = payload.get("sub")
@@ -87,9 +77,27 @@ async def get_current_user(
     return user
 
 
-class RequirePermission:
-    """Dependency callable that checks the current user has a given Permission flag."""
+async def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    if credentials is None:
+        return None
+    try:
+        payload = verify_token(credentials.credentials, token_type="access")
+        user_id: Optional[str] = payload.get("sub")
+    except JWTError:
+        return None
+    if user_id is None:
+        return None
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        return None
+    return user
 
+
+class RequirePermission:
     def __init__(self, perm: Permission):
         self.perm = perm
 
@@ -105,46 +113,14 @@ class RequirePermission:
         return current_user
 
 
-# ─── Quota Check ────────────────────────────────────────────
-
-
-async def count_today_queries(
-    db: AsyncSession, user_id: str, query_type: str
-) -> int:
-    """Count queries of a given type made by the user today."""
-    stmt = select(func.count(QueryLog.id)).where(
-        QueryLog.user_id == user_id,
-        QueryLog.query_type == query_type,
-        func.date(QueryLog.created_at) == func.current_date(),
-    )
-    result = await db.execute(stmt)
-    return result.scalar_one()
-
-
-async def check_quota(
-    user: User, query_type: str, db: AsyncSession
-) -> None:
-    """Check if the user has remaining daily quota for the given query type.
-    Raises HTTPException 429 if quota exceeded."""
-    quota = user.daily_query_limit
-    if quota is None:
-        role_quota_result = await db.execute(
-            select(RoleQuota).where(RoleQuota.role == user.role)
-        )
-        role_quota = role_quota_result.scalar_one_or_none()
-        if role_quota is None:
-            return
-        quota = (
-            role_quota.daily_rag_limit
-            if query_type == "rag"
-            else role_quota.daily_auction_limit
-        )
-    if quota == -1:
-        return  # Unlimited
-
-    today_count = await count_today_queries(db, user.id, query_type)
-    if today_count >= quota:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Daily {query_type} query limit reached ({quota} queries)",
-        )
+__all__ = [
+    "Permission",
+    "ROLE_PERMISSIONS",
+    "RequirePermission",
+    "check_quota",
+    "log_query",
+    "get_current_user",
+    "get_current_user_optional",
+    "get_db",
+    "security_scheme",
+]

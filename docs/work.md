@@ -708,6 +708,109 @@ PNG）。
 
 ---
 
+## P5 — 公开首页 / 角色配额 / 查询审计 / 后台数据统计（2026-05-21）✅
+
+按需求："进入站点显示拍卖检索默认页 → 点击其他功能跳转登录 → 登录后正常查询；
+普通用户每小时 10 次智能检索，VIP 100 次，其他不限；限额可后台修改；查询留日志
+（IP/用户名/查询内容）；提供数据统计界面。"
+
+### 后端
+
+- `infra/postgres/init/02-schema.sql` 与 `backend/alembic/versions/0001_hourly_quotas_and_audit_ip.py`：
+  `role_quotas` 增加 `hourly_ai_limit / hourly_auction_limit / hourly_taxa_limit /
+  daily_ai_limit / daily_taxa_limit`（`-1=不限`，`0=禁用`，`>0=窗口内上限`），
+  种子值 user→AI 10/小时·50/日，vip→100/小时·500/日，其他不限；
+  `query_logs` 增加 `ip_address INET / status_code SMALLINT`，
+  并加 `idx_query_logs_(user_id, created_at DESC) WHERE user_id IS NOT NULL`、
+  `idx_query_logs_(query_type, created_at DESC)` 两个降序索引；
+  外键 `query_logs.user_id_fkey` 改为 `ON DELETE SET NULL`，避免删用户被审计日志阻塞。
+- `backend/app/core/request_ip.py`：`get_client_ip()` 优先读 `X-Real-IP`，
+  其次 `X-Forwarded-For` 最左项，再回落 `request.client.host`，全部经
+  `ipaddress.ip_address()` 验证后返回。
+- `backend/app/core/quota.py`（新）：`check_quota()` 取 `pg_advisory_xact_lock`
+  避免同一用户并发请求绕过窗口；分别 `COUNT(*) WHERE created_at >= now()-interval` 算
+  小时窗 + 日窗；命中阈值时**先写一条 `status_code=429` 的审计日志**再抛
+  `HTTPException(429, detail={error,query_type,window,used,limit,reset_at,
+  retry_after_seconds})` 并附 `Retry-After` 头；`_count_queries_since` 仅计入
+  `status_code < 400` 的请求，确保 429 不计入下次配额，重置语义正确。
+- `backend/app/api/v1/auction.py` `POST /search` 走配额 + `finally` 写审计；
+  新增 **`GET /auction/recent`** 公开端点（无 auth，硬上限 12 条，60s Redis 缓存
+  键 `molluscai:auction:recent:v1`，缓存读写失败均静默回落到直查 DB）；
+  `GET /auction/{item_no}/taxon-match` 标记为 `query_type='ai'`。
+- `backend/app/api/v1/taxa.py` `GET /search`：`mode=hybrid` 标记 `query_type='ai'`，
+  `lexical` 标记 `'taxa'`，统一走 `check_quota` + `log_query`。
+- `backend/app/api/v1/users.py`（新）：`GET /me/quota` 返回三类查询的 `{hourly,daily}`
+  `{used,limit,remaining,reset_at}` 快照，前端用于侧边栏配额胶囊。
+- `backend/app/api/v1/admin.py`：新增 `GET/PATCH /admin/quotas[/{role}]`
+  （PATCH 走 `SELECT … FOR UPDATE`），`GET /admin/queries/stats?days=N`
+  （总数 / 429 数 / by_type / by_day 时序 / Top10 用户 / Top10 关键词 /
+  range_days），`GET /admin/queries/recent?limit=N`（联表 users 取 username）。
+- `backend/app/api/deps.py`：`check_quota` / `log_query` 改为从 `core.quota` 重导出，
+  增加 `get_current_user_optional` 用于 `/auction/recent` 这类可选 auth 端点。
+- `backend/app/main.py`：注册 `/api/v1/users` 路由。
+
+### 前端
+
+- `frontend/src/router/index.js`：`/` 改为 `meta.requiresAuth=false`；新增
+  `/admin/quotas`、`/admin/queries`（`requiresSuperadmin: true`）。其余受保护路由
+  原有 `requiresAuth=true` 守卫保持不变，会自动 `redirect=/login?redirect=…`。
+- `frontend/src/views/HomeView.vue`：根据 `auth.isAuthenticated` 切换两套界面。
+  匿名态调用 `auctionApi.recent()`，渲染 4 张 stat tile + 一张主色 CTA Card
+  （Lock 图标 + 登录/注册按钮）+ "最近上拍" 网格 + "登录后查看更多" CTA；
+  搜索表单 / 排序 / 视图切换 / 分页全部隐藏。已登录态保持原有筛选 + 分页 +
+  500 条上限提示等全部行为。
+- `frontend/src/api/index.js`：新增 `auctionApi.recent()`、`userApi.myQuota()`、
+  `adminApi.{listQuotas, updateQuota, queryStats, recentQueries}`。
+  axios 响应拦截器处理 429：调 `formatQuotaToast(detail)` 弹 `vue-sonner` 错误 toast
+  （文案如 "智能检索本小时配额已用尽（10/10），约 21 分钟后重置"），同时把
+  `error.response.data.detail` 改写成同一友好字符串，避免视图把结构化对象当字符串
+  渲染成 JSON；命中 429 时还会触发 `auth.refreshQuota()` 刷新胶囊。
+- `frontend/src/stores/auth.js`：新增 `quota` ref + `refreshQuota()` action；
+  `login/register` 成功后自动 fetch `/me/quota`。
+- `frontend/src/components/layout/AppSidebar.vue`：登录态在底部账号区上方加智能检索
+  小时配额胶囊（`{used}/{limit}`，进度条按 ≥60% 转琥珀、≥90% 转
+  `bg-destructive`，`-1` 显示 "不限" 不画条）；匿名态把头像 dropdown 替换成
+  "登录" + "注册" 双按钮。`onMounted` + 路由变化均 `refreshQuota()`。
+  管理组新增 "配额管理"（Gauge 图标）和 "查询日志"（ScrollText 图标）两项，
+  仍走 `isSuperadmin` 渲染。
+- `frontend/src/views/AdminQuotasView.vue`（新）：4 行（user / vip / doc_admin /
+  superadmin）× 9 列（hourly_ai / hourly_auction / hourly_taxa / daily_ai /
+  daily_auction / daily_taxa / daily_rag / rate_limit_per_min + 操作）的 Table，
+  逐单元 `<Input type=number min=-1>`；逐行 dirty-state 跟踪，仅修改字段才进
+  PATCH body，`-1` 单元下显示 "∞ 不限" 微文，dirty 行操作列出现 "已修改" Badge +
+  撤销 / 保存 按钮，保存后 toast.success + 重置基准。
+- `frontend/src/views/AdminQueriesView.vue`（新）：顶部范围 `<select>`（1/7/30/90 天）
+  + 刷新按钮；4 张 stat tile（总查询 / 429 命中 / 类型分布迷你条 / 范围）；按类型
+  Badge 列表 + 每日趋势 SVG 折线图（无外部图表库）+ Top10 用户 + Top10 关键词 +
+  近 100 条原始日志（时间 / 用户 / IP / 类型 Badge / 查询内容截断 / 结果数 / 状态
+  Badge）。状态 Badge 200→默认 OK，429→destructive 限流，4xx→outline 拒，5xx→错。
+
+### 验证（Playwright）
+
+- 匿名访问 `/` → 渲染 stat 网格 + CTA Card + 12 条最近拍卖；无搜索/排序/分页；
+  无登录残留，无 console 错误。
+- 匿名 `/taxa` → 跳 `/login?redirect=/taxa`，登录后回到 `/taxa`。
+- `qa_user` 用尽 10 次配额：第 11 次 `taxa/search?mode=hybrid` 返回 HTTP 429，
+  body 含 `error/query_type/window/used/limit/reset_at/retry_after_seconds` 全部
+  字段，`Retry-After` 头存在，下一次请求 `query_logs` 多一条 `status_code=429` 行
+  且 `used` 仍为 10（未自吃）。
+- `/admin/quotas` 把 user.hourly_ai_limit 从 10 改为 15 并保存 → DB 同步落到 15，
+  随后 PATCH 还原为 10。
+- `/admin/queries` 全部 6 块面板（总数 / 429 数 / 类型分布 / 每日趋势 / Top 用户 /
+  Top 关键词 / 近 100 条日志）渲染，IP 与状态码 Badge 正确显示。
+- 全程 `docker compose build frontend`（Vite + Nginx 多阶段）成功。
+
+### 风险 & 后续
+
+- "Top 关键词" 直接 `GROUP BY lower(query_text)`，量大时需要改用按周 rollup；
+  当前实测 ms 级，足够。
+- Postgres `COUNT(*)` 滑动窗口在单实例 + 高并发下能支撑到约 100 req/s；
+  扩到多实例时需切到 Redis sorted-set，已在 Oracle 评审中标记。
+- 现有 `users.daily_query_limit`（per-user override）仍未接入；如需要个体豁免，
+  需在 `_hourly_limit / _daily_limit` 中按用户优先读取该列。
+
+---
+
 ## 运行命令
 
 ```bash

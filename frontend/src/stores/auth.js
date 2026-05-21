@@ -1,14 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { authApi } from '@/api'
+import { authApi, userApi } from '@/api'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('access_token') || null)
   const refreshToken = ref(localStorage.getItem('refresh_token') || null)
   const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
+  const quota = ref(null)
 
   const isAuthenticated = computed(() => !!token.value)
   const currentUser = computed(() => user.value)
+  const isSuperadmin = computed(() => user.value?.role === 'superadmin')
 
   function persistTokens() {
     if (token.value) {
@@ -28,12 +30,27 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function refreshQuota() {
+    if (!token.value) {
+      quota.value = null
+      return null
+    }
+    try {
+      const response = await userApi.myQuota()
+      quota.value = response.data
+      return response.data
+    } catch (e) {
+      return null
+    }
+  }
+
   async function login(username, password) {
     const response = await authApi.login({ username, password })
     token.value = response.data.access_token
     refreshToken.value = response.data.refresh_token
     user.value = response.data.user
     persistTokens()
+    refreshQuota()
   }
 
   async function register(username, email, password) {
@@ -42,6 +59,7 @@ export const useAuthStore = defineStore('auth', () => {
     refreshToken.value = response.data.refresh_token
     user.value = response.data.user
     persistTokens()
+    refreshQuota()
   }
 
   async function refreshAccessToken() {
@@ -59,6 +77,7 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = null
     refreshToken.value = null
     user.value = null
+    quota.value = null
     persistTokens()
   }
 
@@ -66,11 +85,14 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     refreshToken,
     user,
+    quota,
     isAuthenticated,
     currentUser,
+    isSuperadmin,
     login,
     register,
     refreshAccessToken,
+    refreshQuota,
     logout
   }
 })

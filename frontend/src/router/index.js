@@ -12,7 +12,7 @@ const routes = [
     path: '/',
     name: 'Home',
     component: () => import('@/views/HomeView.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   {
     path: '/auctions/:itemNo',
@@ -72,6 +72,18 @@ const routes = [
     path: '/admin/usage',
     name: 'AdminUsage',
     component: () => import('@/views/AdminUsageView.vue'),
+    meta: { requiresAuth: true, requiresSuperadmin: true }
+  },
+  {
+    path: '/admin/quotas',
+    name: 'AdminQuotas',
+    component: () => import('@/views/AdminQuotasView.vue'),
+    meta: { requiresAuth: true, requiresSuperadmin: true }
+  },
+  {
+    path: '/admin/queries',
+    name: 'AdminQueries',
+    component: () => import('@/views/AdminQueriesView.vue'),
     meta: { requiresAuth: true, requiresSuperadmin: true }
   }
 ]

@@ -3,8 +3,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional, List
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, SmallInteger, String, Text, func
+from sqlalchemy.dialects.postgresql import INET, UUID, JSONB, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -49,6 +49,11 @@ class RoleQuota(Base):
     daily_rag_limit: Mapped[int] = mapped_column(Integer, nullable=False)
     features: Mapped[dict] = mapped_column(JSONB, default=dict)
     rate_limit_per_min: Mapped[int] = mapped_column(Integer, nullable=False)
+    hourly_ai_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=-1)
+    hourly_auction_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=-1)
+    hourly_taxa_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=-1)
+    daily_ai_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=-1)
+    daily_taxa_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=-1)
 
     def __repr__(self) -> str:
         return f"<RoleQuota(role={self.role})>"
@@ -67,6 +72,8 @@ class QueryLog(Base):
     cost: Mapped[Decimal] = mapped_column(
         Numeric(10, 4), default=Decimal("0.0000")
     )
+    ip_address: Mapped[Optional[str]] = mapped_column(INET, nullable=True)
+    status_code: Mapped[int] = mapped_column(SmallInteger, default=200)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

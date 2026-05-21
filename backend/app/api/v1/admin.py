@@ -1,14 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any
-from datetime import date as date_type
+from datetime import date as date_type, datetime, timedelta, timezone
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import Permission, RequirePermission
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, RoleQuota, QueryLog
 from app.models.auction import Auction
 from app.tasks.auction_scraper import scrape_incremental
 from app.tasks.embedding_job import embed_run, embed_cancel
@@ -200,3 +200,229 @@ def revoke_task(
 ):
     celery_app.control.revoke(task_id, terminate=True, signal="SIGTERM")
     return RevokeResponse(task_id=task_id, revoked=True)
+
+
+class RoleQuotaOut(BaseModel):
+    role: str
+    daily_auction_limit: int
+    daily_rag_limit: int
+    daily_ai_limit: int
+    daily_taxa_limit: int
+    hourly_auction_limit: int
+    hourly_ai_limit: int
+    hourly_taxa_limit: int
+    rate_limit_per_min: int
+
+    model_config = {"from_attributes": True}
+
+
+class RoleQuotaUpdate(BaseModel):
+    daily_auction_limit: Optional[int] = Field(default=None, ge=-1)
+    daily_rag_limit: Optional[int] = Field(default=None, ge=-1)
+    daily_ai_limit: Optional[int] = Field(default=None, ge=-1)
+    daily_taxa_limit: Optional[int] = Field(default=None, ge=-1)
+    hourly_auction_limit: Optional[int] = Field(default=None, ge=-1)
+    hourly_ai_limit: Optional[int] = Field(default=None, ge=-1)
+    hourly_taxa_limit: Optional[int] = Field(default=None, ge=-1)
+    rate_limit_per_min: Optional[int] = Field(default=None, ge=-1)
+
+
+@router.get("/quotas", response_model=List[RoleQuotaOut])
+async def list_quotas(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    rows = await db.execute(select(RoleQuota).order_by(RoleQuota.role))
+    return [RoleQuotaOut.model_validate(r) for r in rows.scalars().all()]
+
+
+@router.patch("/quotas/{role}", response_model=RoleQuotaOut)
+async def update_quota(
+    role: str,
+    payload: RoleQuotaUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    locked = await db.execute(
+        select(RoleQuota).where(RoleQuota.role == role).with_for_update()
+    )
+    quota = locked.scalar_one_or_none()
+    if quota is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Role {role!r} not found")
+
+    update_fields = payload.model_dump(exclude_unset=True)
+    for k, v in update_fields.items():
+        setattr(quota, k, v)
+    await db.commit()
+    await db.refresh(quota)
+    return RoleQuotaOut.model_validate(quota)
+
+
+class QueryStatsByType(BaseModel):
+    query_type: str
+    count: int
+
+
+class QueryStatsByDay(BaseModel):
+    day: str
+    query_type: str
+    count: int
+
+
+class QueryStatsTopUser(BaseModel):
+    user_id: Optional[str]
+    username: Optional[str]
+    count: int
+
+
+class QueryStatsResponse(BaseModel):
+    total: int
+    rate_limited_429: int
+    by_type: List[QueryStatsByType]
+    by_day: List[QueryStatsByDay]
+    top_users: List[QueryStatsTopUser]
+    top_keywords: List[dict]
+    range_days: int
+
+
+@router.get("/queries/stats", response_model=QueryStatsResponse)
+async def query_stats(
+    days: int = Query(default=7, ge=1, le=90),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    total_row = await db.execute(
+        select(func.count(QueryLog.id)).where(QueryLog.created_at >= since)
+    )
+    total = int(total_row.scalar_one() or 0)
+
+    rl_row = await db.execute(
+        select(func.count(QueryLog.id)).where(
+            QueryLog.created_at >= since, QueryLog.status_code == 429
+        )
+    )
+    rate_limited_429 = int(rl_row.scalar_one() or 0)
+
+    by_type_rows = await db.execute(
+        select(QueryLog.query_type, func.count(QueryLog.id))
+        .where(QueryLog.created_at >= since)
+        .group_by(QueryLog.query_type)
+        .order_by(func.count(QueryLog.id).desc())
+    )
+    by_type = [
+        QueryStatsByType(query_type=qt or "unknown", count=int(c))
+        for qt, c in by_type_rows.all()
+    ]
+
+    by_day_rows = await db.execute(
+        text("""
+            SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+                   COALESCE(query_type, 'unknown') AS query_type,
+                   COUNT(*) AS n
+            FROM query_logs
+            WHERE created_at >= :since
+            GROUP BY 1, 2
+            ORDER BY 1 ASC, 2 ASC
+        """),
+        {"since": since},
+    )
+    by_day = [
+        QueryStatsByDay(day=r.day, query_type=r.query_type, count=int(r.n))
+        for r in by_day_rows
+    ]
+
+    top_users_rows = await db.execute(
+        text("""
+            SELECT q.user_id::text AS user_id, u.username, COUNT(*) AS n
+            FROM query_logs q
+            LEFT JOIN users u ON u.id = q.user_id
+            WHERE q.created_at >= :since AND q.user_id IS NOT NULL
+            GROUP BY q.user_id, u.username
+            ORDER BY n DESC
+            LIMIT 10
+        """),
+        {"since": since},
+    )
+    top_users = [
+        QueryStatsTopUser(user_id=r.user_id, username=r.username, count=int(r.n))
+        for r in top_users_rows
+    ]
+
+    top_keywords_rows = await db.execute(
+        text("""
+            SELECT lower(query_text) AS kw, COUNT(*) AS n
+            FROM query_logs
+            WHERE created_at >= :since
+              AND query_text IS NOT NULL
+              AND length(query_text) BETWEEN 1 AND 100
+            GROUP BY 1
+            ORDER BY n DESC
+            LIMIT 10
+        """),
+        {"since": since},
+    )
+    top_keywords = [{"keyword": r.kw, "count": int(r.n)} for r in top_keywords_rows]
+
+    return QueryStatsResponse(
+        total=total,
+        rate_limited_429=rate_limited_429,
+        by_type=by_type,
+        by_day=by_day,
+        top_users=top_users,
+        top_keywords=top_keywords,
+        range_days=days,
+    )
+
+
+class QueryLogOut(BaseModel):
+    id: int
+    user_id: Optional[str]
+    username: Optional[str]
+    query_text: str
+    query_type: Optional[str]
+    result_count: Optional[int]
+    cost: float
+    ip_address: Optional[str]
+    status_code: int
+    created_at: str
+
+
+@router.get("/queries/recent", response_model=List[QueryLogOut])
+async def query_recent(
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    limit = max(1, min(int(limit or 100), 500))
+    rows = await db.execute(
+        text("""
+            SELECT q.id, q.user_id::text AS user_id, u.username,
+                   q.query_text, q.query_type, q.result_count,
+                   COALESCE(q.cost, 0)::float AS cost,
+                   q.ip_address::text AS ip_address,
+                   COALESCE(q.status_code, 200) AS status_code,
+                   q.created_at
+            FROM query_logs q
+            LEFT JOIN users u ON u.id = q.user_id
+            ORDER BY q.id DESC
+            LIMIT :limit
+        """),
+        {"limit": limit},
+    )
+    return [
+        QueryLogOut(
+            id=int(r.id),
+            user_id=r.user_id,
+            username=r.username,
+            query_text=r.query_text,
+            query_type=r.query_type,
+            result_count=r.result_count,
+            cost=float(r.cost or 0),
+            ip_address=r.ip_address,
+            status_code=int(r.status_code),
+            created_at=r.created_at.isoformat() if r.created_at else "",
+        )
+        for r in rows
+    ]

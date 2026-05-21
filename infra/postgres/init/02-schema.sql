@@ -22,24 +22,41 @@ CREATE TABLE role_quotas (
     daily_auction_limit   INT NOT NULL,
     daily_rag_limit       INT NOT NULL,
     features              JSONB DEFAULT '{}',
-    rate_limit_per_min    INT NOT NULL
+    rate_limit_per_min    INT NOT NULL,
+    -- Hourly + AI quotas (added P5). Sentinel -1 = unlimited, 0 = blocked, >0 = limit.
+    hourly_ai_limit       INT NOT NULL DEFAULT -1,
+    hourly_auction_limit  INT NOT NULL DEFAULT -1,
+    hourly_taxa_limit     INT NOT NULL DEFAULT -1,
+    daily_ai_limit        INT NOT NULL DEFAULT -1,
+    daily_taxa_limit      INT NOT NULL DEFAULT -1
 );
 
-INSERT INTO role_quotas (role, daily_auction_limit, daily_rag_limit, features, rate_limit_per_min) VALUES
-    ('user',       20,   5,   '{}',                                                     30),
-    ('vip',        200,  50,  '{"export":true,"advanced_filter":true,"batch_query":true}', 120),
-    ('doc_admin',  200,  50,  '{"export":true}',                                         120),
-    ('superadmin', -1,   -1,  '{}',                                                     -1);
+INSERT INTO role_quotas (
+    role, daily_auction_limit, daily_rag_limit, features, rate_limit_per_min,
+    hourly_ai_limit, hourly_auction_limit, hourly_taxa_limit,
+    daily_ai_limit, daily_taxa_limit
+) VALUES
+    ('user',       20,   5,   '{}',                                                     30,  10,  -1, -1,  50, -1),
+    ('vip',        200,  50,  '{"export":true,"advanced_filter":true,"batch_query":true}', 120, 100, -1, -1, 500, -1),
+    ('doc_admin',  200,  50,  '{"export":true}',                                         120, -1,  -1, -1, -1,  -1),
+    ('superadmin', -1,   -1,  '{}',                                                     -1,  -1,  -1, -1, -1,  -1);
 
 CREATE TABLE query_logs (
-    id          BIGSERIAL PRIMARY KEY,
-    user_id     UUID REFERENCES users(id),
-    query_text  TEXT NOT NULL,
-    query_type  VARCHAR(20),
+    id           BIGSERIAL PRIMARY KEY,
+    user_id      UUID REFERENCES users(id),
+    query_text   TEXT NOT NULL,
+    query_type   VARCHAR(20),
     result_count INT,
-    cost        DECIMAL(10,4) DEFAULT 0,
-    created_at  TIMESTAMPTZ DEFAULT now()
+    cost         DECIMAL(10,4) DEFAULT 0,
+    ip_address   INET,
+    status_code  SMALLINT DEFAULT 200,
+    created_at   TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE INDEX idx_query_logs_user_created
+    ON query_logs (user_id, created_at DESC) WHERE user_id IS NOT NULL;
+CREATE INDEX idx_query_logs_type_created
+    ON query_logs (query_type, created_at DESC);
 
 -- 4.2 Auction Data
 
