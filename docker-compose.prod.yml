@@ -1,0 +1,33 @@
+services:
+  postgres:
+    restart: always
+    ports:
+      - "127.0.0.1:5433:5432"
+
+  redis:
+    restart: always
+    ports:
+      - "127.0.0.1:6380:6379"
+
+  minio:
+    restart: always
+    ports:
+      - "127.0.0.1:9002:9000"
+      - "127.0.0.1:9003:9001"
+
+  backend:
+    restart: always
+    volumes: []
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  celery-worker:
+    restart: always
+    volumes: []
+
+  celery-beat:
+    restart: always
+    volumes: []
+
+  frontend:
+    restart: always
+    volumes: []
