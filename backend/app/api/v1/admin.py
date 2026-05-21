@@ -16,6 +16,7 @@ from app.tasks.image_downloader import download_sold_images
 from app.tasks.celery_app import celery_app
 from app.services.minio_client import get_minio
 from app.services.task_tracker import record_task, get_recent_tasks, get_task, get_worker_tasks
+from app.core.security import hash_password
 
 router = APIRouter()
 
@@ -426,3 +427,141 @@ async def query_recent(
         )
         for r in rows
     ]
+
+
+ALLOWED_ROLES = {"user", "vip", "doc_admin", "superadmin"}
+
+
+class AdminUserOut(BaseModel):
+    id: str
+    username: str
+    email: str
+    role: str
+    is_active: bool
+    balance: float
+    daily_query_limit: Optional[int]
+    created_at: str
+
+
+class AdminUserListResponse(BaseModel):
+    items: List[AdminUserOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class AdminUserUpdate(BaseModel):
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class AdminUserPasswordReset(BaseModel):
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+def _serialize_user(u: User) -> AdminUserOut:
+    return AdminUserOut(
+        id=str(u.id),
+        username=u.username,
+        email=u.email,
+        role=u.role,
+        is_active=bool(u.is_active),
+        balance=float(u.balance or 0),
+        daily_query_limit=u.daily_query_limit,
+        created_at=u.created_at.isoformat() if u.created_at else "",
+    )
+
+
+@router.get("/users", response_model=AdminUserListResponse)
+async def list_users(
+    q: Optional[str] = Query(default=None, description="search username or email"),
+    role: Optional[str] = Query(default=None),
+    is_active: Optional[bool] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    stmt = select(User)
+    count_stmt = select(func.count(User.id))
+
+    if q:
+        like = f"%{q.strip()}%"
+        cond = (User.username.ilike(like)) | (User.email.ilike(like))
+        stmt = stmt.where(cond)
+        count_stmt = count_stmt.where(cond)
+    if role:
+        if role not in ALLOWED_ROLES:
+            raise HTTPException(status_code=400, detail=f"Unknown role: {role}")
+        stmt = stmt.where(User.role == role)
+        count_stmt = count_stmt.where(User.role == role)
+    if is_active is not None:
+        stmt = stmt.where(User.is_active.is_(is_active))
+        count_stmt = count_stmt.where(User.is_active.is_(is_active))
+
+    total = (await db.execute(count_stmt)).scalar_one()
+    stmt = stmt.order_by(User.created_at.desc()).limit(limit).offset(offset)
+    rows = (await db.execute(stmt)).scalars().all()
+    return AdminUserListResponse(
+        items=[_serialize_user(u) for u in rows],
+        total=int(total),
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.patch("/users/{user_id}", response_model=AdminUserOut)
+async def update_user(
+    user_id: str,
+    payload: AdminUserUpdate,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_admin),
+):
+    locked = await db.execute(
+        select(User).where(User.id == user_id).with_for_update()
+    )
+    target = locked.scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    fields = payload.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    is_self = str(target.id) == str(actor.id)
+
+    if "role" in fields:
+        new_role = fields["role"]
+        if new_role not in ALLOWED_ROLES:
+            raise HTTPException(status_code=400, detail=f"Unknown role: {new_role}")
+        if is_self and target.role == "superadmin" and new_role != "superadmin":
+            raise HTTPException(status_code=400, detail="不能降级自己的超级管理员权限")
+        target.role = new_role
+
+    if "is_active" in fields:
+        new_active = bool(fields["is_active"])
+        if is_self and not new_active:
+            raise HTTPException(status_code=400, detail="不能锁定自己的账号")
+        target.is_active = new_active
+
+    await db.commit()
+    await db.refresh(target)
+    return _serialize_user(target)
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: str,
+    payload: AdminUserPasswordReset,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    locked = await db.execute(
+        select(User).where(User.id == user_id).with_for_update()
+    )
+    target = locked.scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    target.password_hash = hash_password(payload.new_password)
+    await db.commit()
+    return {"ok": True, "user_id": str(target.id), "username": target.username}

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Search, BookOpen, MessageCircle, Database, LogOut, User as UserIcon, ChevronRight, Dna, Cpu, Activity, Boxes, ListTodo, Gauge, ScrollText } from 'lucide-vue-next'
+import { Search, BookOpen, MessageCircle, Database, LogOut, User as UserIcon, ChevronRight, Dna, Cpu, Activity, Boxes, ListTodo, Gauge, ScrollText, Users } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
 import ThemeToggle from '@/components/layout/ThemeToggle.vue'
@@ -78,7 +78,8 @@ const sections = computed(() => [
           { name: '向量管理', to: '/admin/embeddings', icon: Boxes, enabled: true },
           { name: '用量统计', to: '/admin/usage', icon: Activity, enabled: true },
           { name: '配额管理', to: '/admin/quotas', icon: Gauge, enabled: true },
-          { name: '查询日志', to: '/admin/queries', icon: ScrollText, enabled: true }
+          { name: '查询日志', to: '/admin/queries', icon: ScrollText, enabled: true },
+          { name: '用户管理', to: '/admin/users', icon: Users, enabled: true }
         ]
       }]
     : [])

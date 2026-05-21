@@ -85,6 +85,12 @@ const routes = [
     name: 'AdminQueries',
     component: () => import('@/views/AdminQueriesView.vue'),
     meta: { requiresAuth: true, requiresSuperadmin: true }
+  },
+  {
+    path: '/admin/users',
+    name: 'AdminUsers',
+    component: () => import('@/views/AdminUsersView.vue'),
+    meta: { requiresAuth: true, requiresSuperadmin: true }
   }
 ]
 
