@@ -44,7 +44,7 @@ async function submit() {
 </script>
 
 <template>
-  <div class="mt-auto">
+  <div class="px-3 mt-2 mb-auto">
     <Button
       variant="ghost"
       size="sm"

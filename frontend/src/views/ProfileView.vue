@@ -31,7 +31,6 @@ const roleVariant = {
 }
 
 const u = computed(() => authStore.currentUser || {})
-const initials = computed(() => (u.value.username || '?').slice(0, 2).toUpperCase())
 
 function logout() {
   authStore.logout()
@@ -50,7 +49,9 @@ function logout() {
     <Card>
       <CardHeader>
         <div class="flex items-center gap-4">
-          <Avatar class="size-14 text-base bg-primary/10 text-primary">{{ initials }}</Avatar>
+          <Avatar class="size-14 bg-primary/10 p-1.5">
+            <img src="/logo.png" alt="logo" class="size-full object-contain" />
+          </Avatar>
           <div class="flex-1">
             <CardTitle class="text-xl">{{ u.username || '—' }}</CardTitle>
             <p class="text-sm text-muted-foreground mt-1">{{ u.email || '—' }}</p>

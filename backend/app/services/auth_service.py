@@ -50,7 +50,13 @@ async def register_user(
 async def authenticate_user(
     db: AsyncSession, username: str, password: str
 ) -> Optional[AuthResponse]:
-    result = await db.execute(select(User).where(User.username == username))
+    # Login accepts either a username or an email in the same field.
+    # We branch on '@' so callers don't need to tell us which one they sent.
+    if "@" in username:
+        stmt = select(User).where(User.email == username)
+    else:
+        stmt = select(User).where(User.username == username)
+    result = await db.execute(stmt)
     user = result.scalar_one_or_none()
     if user is None or not verify_password(password, user.password_hash):
         return None

@@ -111,8 +111,8 @@ async function doRegister() {
 
           <form v-if="tab === 'login'" @submit.prevent="doLogin" class="space-y-4">
             <div class="space-y-1.5">
-              <Label for="login-username">用户名</Label>
-              <Input id="login-username" v-model="loginForm.username" autocomplete="username" />
+              <Label for="login-username">用户名 / 邮箱</Label>
+              <Input id="login-username" v-model="loginForm.username" autocomplete="username" placeholder="用户名或邮箱" />
             </div>
             <div class="space-y-1.5">
               <Label for="login-password">密码</Label>

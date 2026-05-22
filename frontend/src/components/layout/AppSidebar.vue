@@ -87,11 +87,6 @@ const sections = computed(() => [
     : [])
 ])
 
-const initials = computed(() => {
-  const u = authStore.currentUser?.username || '?'
-  return u.slice(0, 2).toUpperCase()
-})
-
 function isActive(to) {
   if (to === '/') return route.path === '/'
   return route.path.startsWith(to)
@@ -170,7 +165,9 @@ function logout() {
       <DropdownMenu v-if="isAuthed">
         <DropdownMenuTrigger>
           <button class="flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent transition-colors">
-            <Avatar class="size-7 text-xs font-medium text-primary bg-primary/10">{{ initials }}</Avatar>
+            <Avatar class="size-7 bg-primary/10 p-0.5">
+              <img src="/logo.png" alt="logo" class="size-full object-contain" />
+            </Avatar>
             <div class="flex-1 text-left leading-tight overflow-hidden">
               <div class="text-sm font-medium truncate">{{ authStore.currentUser?.username }}</div>
               <div class="text-[11px] text-muted-foreground truncate">{{ authStore.currentUser?.email || '' }}</div>
