@@ -34,6 +34,8 @@ const TYPE_BG = {
 }
 
 const days = ref(7)
+const recentLimit = ref(100)
+const q = ref('')
 const stats = ref(null)
 const recent = ref([])
 const loading = ref(false)
@@ -105,7 +107,7 @@ async function load() {
   try {
     const [s, r] = await Promise.all([
       adminApi.queryStats(days.value),
-      adminApi.recentQueries(100)
+      adminApi.recentQueries(recentLimit.value, q.value)
     ])
     stats.value = s.data
     recent.value = r.data || []
@@ -173,6 +175,32 @@ onMounted(load)
         </Button>
       </div>
     </header>
+
+    <section class="flex items-center gap-3 flex-wrap">
+      <div class="flex items-center gap-2">
+        <label class="text-xs text-muted-foreground whitespace-nowrap">最近</label>
+        <select
+          v-model.number="recentLimit"
+          @change="load"
+          class="h-8 rounded-md border border-input bg-background px-2 text-xs"
+        >
+          <option :value="50">50 条</option>
+          <option :value="100">100 条</option>
+          <option :value="200">200 条</option>
+          <option :value="500">500 条</option>
+        </select>
+      </div>
+      <div class="flex items-center gap-2 flex-1 max-w-sm">
+        <label class="text-xs text-muted-foreground whitespace-nowrap">关键字</label>
+        <input
+          v-model.trim="q"
+          @keydown.enter="load"
+          placeholder="搜索查询内容…"
+          class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <Button variant="outline" size="sm" @click="load" :disabled="loading" class="h-8 text-xs">过滤</Button>
+      </div>
+    </section>
 
     <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       <Card class="p-4">
@@ -394,7 +422,7 @@ onMounted(load)
     </section>
 
     <section class="space-y-3">
-      <h2 class="font-serif text-xl">近 100 条查询日志</h2>
+      <h2 class="font-serif text-xl">近 {{ recentLimit }} 条查询日志</h2>
       <Card v-if="loading && !recent.length" class="p-4 space-y-2">
         <Skeleton v-for="i in 6" :key="i" class="h-8 w-full" />
       </Card>
@@ -424,7 +452,7 @@ onMounted(load)
                 <span v-else-if="row.user_id" class="font-mono text-muted-foreground">{{ row.user_id }}</span>
                 <span v-else class="text-muted-foreground italic">匿名</span>
               </TableCell>
-              <TableCell class="font-mono text-xs text-muted-foreground">{{ row.ip_address || '—' }}</TableCell>
+              <TableCell class="font-mono text-xs text-muted-foreground">{{ row.display_ip || row.ip_address || '—' }}</TableCell>
               <TableCell>
                 <Badge :variant="typeBadgeVariant(row.query_type)" class="text-[10px]">
                   {{ typeLabel(row.query_type) }}

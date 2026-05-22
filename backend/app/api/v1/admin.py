@@ -19,6 +19,7 @@ from app.tasks.celery_app import celery_app
 from app.services.minio_client import get_minio
 from app.services.task_tracker import record_task, get_recent_tasks, get_task, get_worker_tasks
 from app.core.security import hash_password
+from app.core.request_ip import get_display_ip
 
 router = APIRouter()
 
@@ -359,7 +360,9 @@ async def query_stats(
             FROM query_logs
             WHERE created_at >= :since
               AND query_text IS NOT NULL
-              AND length(query_text) BETWEEN 1 AND 100
+              AND query_text != ''
+              AND length(query_text) BETWEEN 2 AND 100
+              AND query_type IN ('taxa', 'ai')
             GROUP BY 1
             ORDER BY n DESC
             LIMIT 10
@@ -388,6 +391,7 @@ class QueryLogOut(BaseModel):
     result_count: Optional[int]
     cost: float
     ip_address: Optional[str]
+    display_ip: Optional[str] = None
     status_code: int
     created_at: str
 
@@ -395,12 +399,19 @@ class QueryLogOut(BaseModel):
 @router.get("/queries/recent", response_model=List[QueryLogOut])
 async def query_recent(
     limit: int = 100,
+    q: str = Query(default="", description="Filter by query_text (ILIKE substring match)"),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
     limit = max(1, min(int(limit or 100), 500))
+    q_filter = q.strip()
+    where_clause = ""
+    params: dict = {"limit": limit}
+    if q_filter:
+        where_clause = "WHERE q.query_text ILIKE :q"
+        params["q"] = f"%{q_filter}%"
     rows = await db.execute(
-        text("""
+        text(f"""
             SELECT q.id, q.user_id::text AS user_id, u.username,
                    q.query_text, q.query_type, q.result_count,
                    COALESCE(q.cost, 0)::float AS cost,
@@ -409,10 +420,11 @@ async def query_recent(
                    q.created_at
             FROM query_logs q
             LEFT JOIN users u ON u.id = q.user_id
+            {where_clause}
             ORDER BY q.id DESC
             LIMIT :limit
         """),
-        {"limit": limit},
+        params,
     )
     return [
         QueryLogOut(
@@ -424,6 +436,7 @@ async def query_recent(
             result_count=r.result_count,
             cost=float(r.cost or 0),
             ip_address=r.ip_address,
+            display_ip=get_display_ip(r.ip_address),
             status_code=int(r.status_code),
             created_at=r.created_at.isoformat() if r.created_at else "",
         )

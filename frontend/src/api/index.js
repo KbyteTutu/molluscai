@@ -126,7 +126,7 @@ export const adminApi = {
   listQuotas: () => apiClient.get('/admin/quotas'),
   updateQuota: (role, data) => apiClient.patch(`/admin/quotas/${role}`, data),
   queryStats: (days = 7) => apiClient.get('/admin/queries/stats', { params: { days } }),
-  recentQueries: (limit = 100) => apiClient.get('/admin/queries/recent', { params: { limit } }),
+  recentQueries: (limit = 100, q = '') => apiClient.get('/admin/queries/recent', { params: { limit, q } }),
   listUsers: (params) => apiClient.get('/admin/users', { params }),
   updateUser: (id, data) => apiClient.patch(`/admin/users/${id}`, data),
   resetUserPassword: (id, newPassword) => apiClient.post(`/admin/users/${id}/reset-password`, { new_password: newPassword }),
