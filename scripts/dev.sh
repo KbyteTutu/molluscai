@@ -28,7 +28,9 @@ API_BASE="http://localhost:${BACKEND_PORT:-8000}/api/v1"
 env_get() {
   local key="$1"
   [[ -f "$ROOT/.env" ]] || { printf '%s' ""; return 0; }
-  grep -E "^${key}=" "$ROOT/.env" | head -1 | cut -d= -f2-
+  # grep returns 1 when no match; under `set -euo pipefail` that would kill
+  # callers using $(env_get …). Treat "missing key" as empty string.
+  { grep -E "^${key}=" "$ROOT/.env" || true; } | head -1 | cut -d= -f2-
 }
 
 # ─── tty colors ─────────────────────────────────────────────
