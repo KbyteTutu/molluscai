@@ -164,3 +164,74 @@ docker network inspect molluscai-net --format \
 ```
 
 `external: true` 让网络/卷在 `prod-down` 期间存活，`prod-up` 重建容器时会全部重新加入同一网络。
+
+---
+
+## 把 MinIO 数据挂到 NAS（可选）
+
+适用于"docker volume 在系统盘上太挤、想把对象存储放更大或更便宜的网络存储上"的场景。
+
+### 前置条件
+
+- NAS 通过 **NFS v3 / v4** 挂载到主机一个固定路径（阿里云 NAS、群晖、TrueNAS 都行；**SMB/CIFS 不行**——MinIO 不支持）。
+- 挂载目录对当前用户**可写**。最简单的姿势是 `chmod 1777 <挂载点>`（参考 `/tmp` 的权限模型）。
+- **首次启用前 MinIO 里没有要保留的数据**——切换会让旧 named volume 里的对象与新挂载目录脱钩。如果 MinIO 里已有真实数据，先按下面的"迁移现有数据"小节跑一次性拷贝。
+
+### 启用步骤
+
+```bash
+# 1. 准备 NAS 子目录
+sudo mkdir -p /data_nas/minio
+# (如果目录是 root:root 而 NAS 挂载用 sec=sys，需要让 minio 容器进程能写)
+# 阿里云 NAS 默认根目录 1777 (rwxrwxrwt)，建出来的子目录继承父权限即可。
+
+# 2. 把路径写进 .env
+echo 'MINIO_DATA_PATH=/data_nas/minio' >> .env
+
+# 3. 重新创建 minio 容器（仅 minio，避免动到其他服务）
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate minio
+
+# 4. 验证
+docker inspect molluscai-minio --format \
+  '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
+# 期望看到: bind /data_nas/minio -> /data
+```
+
+### 关掉（回退到 docker named volume）
+
+```bash
+# 1. 从 .env 删掉 MINIO_DATA_PATH= 那一行
+sed -i '/^MINIO_DATA_PATH=/d' .env
+
+# 2. recreate minio
+./dev prod-restart minio
+```
+
+之后 minio 重新写到 docker named volume `molluscai-minio-data`。**NAS 上的数据不会被 docker 自动删**——如需手动清理 `rm -rf /data_nas/minio/*`。
+
+### 迁移现有数据
+
+如果切换时 MinIO 里**有**要保留的对象：
+
+```bash
+# 1. 停 minio（避免迁移过程中数据漂移）
+docker stop molluscai-minio
+
+# 2. 拷贝 docker volume → NAS
+docker run --rm \
+  -v molluscai-minio-data:/from \
+  -v /data_nas/minio:/to \
+  alpine sh -c 'cp -a /from/. /to/'
+
+# 3. 写入 .env，按上面的 "启用步骤" 第 2-4 步走
+```
+
+### 关于性能
+
+- NFS（特别是 NFSv3 nolock）的 fsync 延迟比本地 SSD 高 1-2 个数量级。批量上传图片时吞吐会肉眼可见慢一些，但读取（serving 给前端）走 page cache，影响很小。
+- **永远不要** 同时跑两个 MinIO 实例指向同一个 NFS 目录——nolock 模式下会数据损坏。本仓库就是单实例部署，OK。
+
+### `prod-nuke` 的行为
+
+`./dev prod-nuke` **不会**碰 NAS 上的数据。删除的只有 docker 管理的资源（network、named volumes、images）。NAS 数据要清理需要操作员手动 `rm -rf $MINIO_DATA_PATH/*`。脚本会在 nuke 时打印这条提示。
+

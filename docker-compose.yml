@@ -46,7 +46,7 @@ services:
       - "${MINIO_API_PORT:-9002}:9000"
       - "${MINIO_CONSOLE_PORT:-9003}:9001"
     volumes:
-      - molluscai-minio-data:/data
+      - "${MINIO_DATA_PATH:-molluscai-minio-data}:/data"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s

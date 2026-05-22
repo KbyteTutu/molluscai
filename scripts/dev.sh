@@ -25,6 +25,12 @@ PG_USER="${POSTGRES_USER:-mollusc}"
 PG_DB="${POSTGRES_DB:-molluscai}"
 API_BASE="http://localhost:${BACKEND_PORT:-8000}/api/v1"
 
+env_get() {
+  local key="$1"
+  [[ -f "$ROOT/.env" ]] || { printf '%s' ""; return 0; }
+  grep -E "^${key}=" "$ROOT/.env" | head -1 | cut -d= -f2-
+}
+
 # ─── tty colors ─────────────────────────────────────────────
 if [[ -t 1 ]]; then
   C_DIM=$'\e[2m'; C_OK=$'\e[32m'; C_ERR=$'\e[31m'; C_WARN=$'\e[33m'; C_HEAD=$'\e[1;36m'; C_END=$'\e[0m'
@@ -73,7 +79,27 @@ ensure_network() {
 }
 
 ensure_volumes() {
+  local minio_path
+  minio_path="$(env_get MINIO_DATA_PATH)"
+  if [[ -n "$minio_path" ]]; then
+    if [[ ! -d "$minio_path" ]]; then
+      err "MINIO_DATA_PATH=$minio_path is set but the directory does not exist."
+      err "Create it on the host first (e.g. mkdir -p $minio_path) or unset MINIO_DATA_PATH to fall back to a docker named volume."
+      die "aborted"
+    fi
+    if ! touch "$minio_path/.molluscai-write-test" 2>/dev/null; then
+      err "MINIO_DATA_PATH=$minio_path is not writable by the current user."
+      err "Fix permissions (e.g. chmod 1777 $minio_path on a shared NAS, or chown to the minio container UID)."
+      die "aborted"
+    fi
+    rm -f "$minio_path/.molluscai-write-test"
+    ok "minio bind mount: $minio_path (writable)"
+  fi
   for v in "${VOLUMES[@]}"; do
+    if [[ -n "$minio_path" && "$v" == "molluscai-minio-data" ]]; then
+      ok "skipping volume $v (MINIO_DATA_PATH set)"
+      continue
+    fi
     if docker volume inspect "$v" >/dev/null 2>&1; then
       ok "volume $v exists"
     else
@@ -394,8 +420,14 @@ cmd_prod_up() {
 }
 
 cmd_prod_nuke() {
+  local minio_path
+  minio_path="$(env_get MINIO_DATA_PATH)"
   warn "PRODUCTION nuke: stops stack, deletes ALL volumes, network, and molluscai-* images."
   warn "Postgres / Redis / MinIO data will be permanently destroyed."
+  if [[ -n "$minio_path" ]]; then
+    warn "MINIO_DATA_PATH=$minio_path is set: that host path is NOT touched."
+    warn "If you also want to wipe MinIO data on the NAS, run manually:  rm -rf $minio_path/*"
+  fi
   printf 'Type %sprod-nuke%s to confirm: ' "$C_ERR" "$C_END"
   local confirm; read -r confirm
   [[ "$confirm" == "prod-nuke" ]] || die "aborted"
@@ -405,6 +437,7 @@ cmd_prod_nuke() {
   docker image rm -f "$BASE_IMAGE" 2>/dev/null || true
   docker image rm -f molluscai-backend:latest molluscai-celery-worker:latest molluscai-celery-beat:latest molluscai-frontend:latest 2>/dev/null || true
   ok "production stack nuked. run '$0 prod-up' to redeploy from scratch"
+  [[ -n "$minio_path" ]] && ok "(MinIO bind-mount data at $minio_path was preserved.)"
 }
 
 cmd_prod_build() {
