@@ -178,11 +178,11 @@ cmd_rebuild() {
 cmd_restart() {
   local svc="${1:-}"
   if [[ -z "$svc" ]]; then
-    log "restarting backend + celery-worker (code-only services)..."
-    $COMPOSE restart backend celery-worker
+    log "recreating backend + celery-worker + celery-beat..."
+    $COMPOSE up -d --force-recreate backend celery-worker celery-beat
   else
-    log "restarting $svc..."
-    $COMPOSE restart "$svc"
+    log "recreating $svc..."
+    $COMPOSE up -d --force-recreate "$svc"
   fi
   ok "restarted"
 }
@@ -423,11 +423,11 @@ cmd_prod_down() {
 cmd_prod_restart() {
   local svc="${1:-}"
   if [[ -z "$svc" ]]; then
-    log "restarting backend + frontend..."
-    $COMPOSE_PROD restart backend frontend
+    log "recreating backend + celery-worker + celery-beat (picks up compose/.env changes)..."
+    $COMPOSE_PROD up -d --force-recreate backend celery-worker celery-beat
   else
-    log "restarting $svc..."
-    $COMPOSE_PROD restart "$svc"
+    log "recreating $svc (picks up compose/.env changes)..."
+    $COMPOSE_PROD up -d --force-recreate "$svc"
   fi
   ok "restarted"
 }
