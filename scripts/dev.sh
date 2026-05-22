@@ -6,17 +6,20 @@ SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 cd "$ROOT"
 
-BASE_IMAGE="molluscai:v0.1"
+BASE_IMAGE="molluscai-base:v0.2"
 BASE_DOCKERFILE="infra/docker/base.Dockerfile"
 COMPOSE="docker compose"
 COMPOSE_PROD="$COMPOSE -f docker-compose.yml -f docker-compose.prod.yml"
 
-PG_CONTAINER="mollusc-postgres"
-REDIS_CONTAINER="mollusc-redis"
-BACKEND_CONTAINER="mollusc-backend"
-WORKER_CONTAINER="mollusc-celery-worker"
-BEAT_CONTAINER="mollusc-celery-beat"
-MINIO_CONTAINER="mollusc-minio"
+NETWORK_NAME="molluscai-net"
+VOLUMES=(molluscai-postgres-data molluscai-redis-data molluscai-minio-data)
+
+PG_CONTAINER="molluscai-postgres"
+REDIS_CONTAINER="molluscai-redis"
+BACKEND_CONTAINER="molluscai-backend"
+WORKER_CONTAINER="molluscai-celery-worker"
+BEAT_CONTAINER="molluscai-celery-beat"
+MINIO_CONTAINER="molluscai-minio"
 
 PG_USER="${POSTGRES_USER:-mollusc}"
 PG_DB="${POSTGRES_DB:-molluscai}"
@@ -59,6 +62,48 @@ ensure_base() {
   ok "base image built"
 }
 
+ensure_network() {
+  if docker network inspect "$NETWORK_NAME" >/dev/null 2>&1; then
+    ok "network $NETWORK_NAME exists"
+  else
+    log "creating network $NETWORK_NAME..."
+    docker network create "$NETWORK_NAME" >/dev/null
+    ok "network created"
+  fi
+}
+
+ensure_volumes() {
+  for v in "${VOLUMES[@]}"; do
+    if docker volume inspect "$v" >/dev/null 2>&1; then
+      ok "volume $v exists"
+    else
+      log "creating volume $v..."
+      docker volume create "$v" >/dev/null
+      ok "volume $v created"
+    fi
+  done
+}
+
+ensure_env() {
+  if [[ ! -f "$ROOT/.env" ]]; then
+    err ".env missing. Generate one with:"
+    err "    ./dev prod-secrets > .env  # then fill in API keys"
+    die "aborted"
+  fi
+  if grep -qE '^(JWT_SECRET_KEY|JWT_REFRESH_SECRET_KEY|ENCRYPTION_KEY)=replace-me' "$ROOT/.env"; then
+    err ".env still contains 'replace-me-...' placeholders for secrets."
+    err "Generate new ones with: ./dev prod-secrets"
+    die "aborted"
+  fi
+  ok ".env present and secrets non-default"
+}
+
+ensure_infra() {
+  ensure_env
+  ensure_network
+  ensure_volumes
+}
+
 container_running() { docker ps --format '{{.Names}}' | grep -qx "$1"; }
 
 require_running() {
@@ -77,6 +122,7 @@ get_admin_token() {
 # ─── subcommands ────────────────────────────────────────────
 
 cmd_up() {
+  ensure_infra
   ensure_base
   log "starting full stack..."
   $COMPOSE up -d --build
@@ -91,13 +137,15 @@ cmd_down() {
 }
 
 cmd_nuke() {
-  warn "this will DELETE all data: postgres volume, minio volume, redis volume, AND the base image"
+  warn "this will DELETE all data: postgres / redis / minio volumes, the molluscai-net network, AND all molluscai-* images"
   printf 'Type %snuke%s to confirm: ' "$C_ERR" "$C_END"
   local confirm; read -r confirm
   [[ "$confirm" == "nuke" ]] || die "aborted"
-  $COMPOSE down -v
+  $COMPOSE down --remove-orphans 2>/dev/null || true
+  for v in "${VOLUMES[@]}"; do docker volume rm -f "$v" 2>/dev/null || true; done
+  docker network rm "$NETWORK_NAME" 2>/dev/null || true
   docker image rm -f "$BASE_IMAGE" 2>/dev/null || true
-  docker image rm -f molluscai-backend molluscai-celery-worker molluscai-celery-beat molluscai-frontend 2>/dev/null || true
+  docker image rm -f molluscai-backend:latest molluscai-celery-worker:latest molluscai-celery-beat:latest molluscai-frontend:latest 2>/dev/null || true
   ok "nuked. run '$0 up' to start fresh"
 }
 
@@ -193,7 +241,7 @@ cmd_redis() {
 
 cmd_shell() {
   local svc="${1:-backend}"
-  local container="mollusc-$svc"
+  local container="molluscai-$svc"
   require_running "$container"
   docker exec -it "$container" bash
 }
@@ -316,11 +364,29 @@ cmd_test() {
 # ─── production ──────────────────────────────────────────────
 
 cmd_prod_up() {
+  ensure_infra
   ensure_base
   log "starting production stack..."
   $COMPOSE_PROD up -d --build
   ok "production stack started"
   cmd_prod_status
+  echo
+  ok "next step: import data with"
+  ok "    ./dev prod-import data_import/worms_mollusca.sqlite[.gz] data_import/postgres_backup.sql[.gz]"
+}
+
+cmd_prod_nuke() {
+  warn "PRODUCTION nuke: stops stack, deletes ALL volumes, network, and molluscai-* images."
+  warn "Postgres / Redis / MinIO data will be permanently destroyed."
+  printf 'Type %sprod-nuke%s to confirm: ' "$C_ERR" "$C_END"
+  local confirm; read -r confirm
+  [[ "$confirm" == "prod-nuke" ]] || die "aborted"
+  $COMPOSE_PROD down --remove-orphans 2>/dev/null || true
+  for v in "${VOLUMES[@]}"; do docker volume rm -f "$v" 2>/dev/null || true; done
+  docker network rm "$NETWORK_NAME" 2>/dev/null || true
+  docker image rm -f "$BASE_IMAGE" 2>/dev/null || true
+  docker image rm -f molluscai-backend:latest molluscai-celery-worker:latest molluscai-celery-beat:latest molluscai-frontend:latest 2>/dev/null || true
+  ok "production stack nuked. run '$0 prod-up' to redeploy from scratch"
 }
 
 cmd_prod_build() {
@@ -410,9 +476,10 @@ ${C_HEAD}Observability:${C_END}
   status            health check across all services
 
 ${C_HEAD}Production (VPS deployment):${C_END}
-  prod-up            start stack with docker-compose.prod.yml (no --reload)
+  prod-up            start prod stack (auto-creates network + volumes; checks .env)
   prod-build         build base image + --no-cache backend/frontend
-  prod-down          stop production stack
+  prod-down          stop production stack (network + volumes preserved)
+  prod-nuke          DESTRUCTIVE: stop + delete volumes + network + images (requires 'prod-nuke')
   prod-restart [svc] restart service (default: backend + frontend)
   prod-logs [svc]    tail production logs (default: backend)
   prod-status        show production compose ps
@@ -470,6 +537,7 @@ case "$cmd" in
   prod-up)        cmd_prod_up "$@" ;;
   prod-build)     cmd_prod_build "$@" ;;
   prod-down)      cmd_prod_down "$@" ;;
+  prod-nuke)      cmd_prod_nuke "$@" ;;
   prod-restart)   cmd_prod_restart "$@" ;;
   prod-logs)      cmd_prod_logs "$@" ;;
   prod-status|prod-ps) cmd_prod_status "$@" ;;

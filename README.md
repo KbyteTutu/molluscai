@@ -108,7 +108,7 @@ cp .env.example .env
 ## 手动构建（跳过 ./dev）
 
 ```bash
-docker build -f infra/docker/base.Dockerfile -t molluscai:v0.1 .
+docker build -f infra/docker/base.Dockerfile -t molluscai-base:v0.2 .
 docker compose up -d --build
 ```
 

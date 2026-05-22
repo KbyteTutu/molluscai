@@ -25,6 +25,9 @@ celery_app.conf.update(
     task_soft_time_limit=25 * 60,
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=50,
+    broker_connection_retry_on_startup=True,
+    broker_connection_retry=True,
+    broker_connection_max_retries=None,
     beat_schedule={
         "scrape-auctions-hourly": {
             "task": "auction.scrape_incremental",

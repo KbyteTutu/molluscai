@@ -23,11 +23,17 @@ bash scripts/prod_import.sh data_import/worms_mollusca.sqlite data_import/postgr
 
 ```bash
 # WoRMS taxonomy → taxa / taxa_synonyms / taxa_vernaculars / taxa_classification / ...
-docker compose exec -T backend python -m scripts.import_worms_sqlite /app/data_import/worms_mollusca.sqlite
+./dev worms-import data_import/worms_mollusca.sqlite
 
 # Legacy auctions
 ./dev seed   # uses legacy/postgres_backup.sql by default; see scripts/dev.sh
 ```
+
+> Both `worms-import` and `prod-import` go through `scripts/prod_import.sh`,
+> which `docker cp`'s the file into the backend container. The repository's
+> `data_import/` directory is **not** volume-mounted into the container, so
+> `docker compose exec backend python -m scripts.import_worms_sqlite ...`
+> directly will fail with `FileNotFoundError`. Always use the wrapper.
 
 The WoRMS importer:
 - Auto-creates any missing extras tables (classification / children / attributes / external_ids) on first run.

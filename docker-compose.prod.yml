@@ -1,17 +1,17 @@
 services:
   postgres:
     restart: always
-    ports:
+    ports: !reset
       - "127.0.0.1:5433:5432"
 
   redis:
     restart: always
-    ports:
+    ports: !reset
       - "127.0.0.1:6380:6379"
 
   minio:
     restart: always
-    ports:
+    ports: !reset
       - "127.0.0.1:9002:9000"
       - "127.0.0.1:9003:9001"
 

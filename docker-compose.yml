@@ -1,7 +1,9 @@
+name: molluscai
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: mollusc-postgres
+    container_name: molluscai-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-mollusc}
@@ -10,7 +12,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - molluscai-postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mollusc} -d ${POSTGRES_DB:-molluscai}"]
@@ -20,12 +22,12 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: mollusc-redis
+    container_name: molluscai-redis
     restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6380}:6379"
     volumes:
-      - redis_data:/data
+      - molluscai-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -34,7 +36,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: mollusc-minio
+    container_name: molluscai-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -44,7 +46,7 @@ services:
       - "${MINIO_API_PORT:-9002}:9000"
       - "${MINIO_CONSOLE_PORT:-9003}:9001"
     volumes:
-      - minio_data:/data
+      - molluscai-minio-data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -55,7 +57,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: mollusc-backend
+    image: molluscai-backend:latest
+    container_name: molluscai-backend
     restart: unless-stopped
     depends_on:
       postgres:
@@ -90,7 +93,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: mollusc-celery-worker
+    image: molluscai-celery-worker:latest
+    container_name: molluscai-celery-worker
     restart: unless-stopped
     depends_on:
       postgres:
@@ -118,7 +122,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: mollusc-celery-beat
+    image: molluscai-celery-beat:latest
+    container_name: molluscai-celery-beat
     restart: unless-stopped
     depends_on:
       postgres:
@@ -139,7 +144,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: mollusc-frontend
+    image: molluscai-frontend:latest
+    container_name: molluscai-frontend
     restart: unless-stopped
     depends_on:
       - backend
@@ -148,7 +154,20 @@ services:
     volumes:
       - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
+# external: true on network + volumes keeps them alive across compose
+# project recreation and daemon restarts. ./dev prod-up creates them.
+networks:
+  default:
+    name: molluscai-net
+    external: true
+
 volumes:
-  postgres_data:
-  redis_data:
-  minio_data:
+  molluscai-postgres-data:
+    name: molluscai-postgres-data
+    external: true
+  molluscai-redis-data:
+    name: molluscai-redis-data
+    external: true
+  molluscai-minio-data:
+    name: molluscai-minio-data
+    external: true

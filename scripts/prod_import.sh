@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Production data import driver.
 #
-# Imports two source files into a running mollusc-postgres container:
+# Imports two source files into a running molluscai-postgres container:
 #   * worms_mollusca.sqlite (or .gz) -> taxa.* tables    (via backend python module)
 #   * postgres_backup.sql            -> auctions table  (staging -> upsert)
 #
@@ -17,8 +17,8 @@
 #   bash scripts/prod_import.sh "" data_import/postgres_backup.sql
 #
 # Environment overrides:
-#   PG_CONTAINER       (default: mollusc-postgres)
-#   BACKEND_CONTAINER  (default: mollusc-backend)
+#   PG_CONTAINER       (default: molluscai-postgres)
+#   BACKEND_CONTAINER  (default: molluscai-backend)
 #   POSTGRES_USER      (default: mollusc)
 #   POSTGRES_DB        (default: molluscai)
 
@@ -28,8 +28,8 @@ SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 cd "$ROOT"
 
-PG_CONTAINER="${PG_CONTAINER:-mollusc-postgres}"
-BACKEND_CONTAINER="${BACKEND_CONTAINER:-mollusc-backend}"
+PG_CONTAINER="${PG_CONTAINER:-molluscai-postgres}"
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-molluscai-backend}"
 PG_USER="${POSTGRES_USER:-mollusc}"
 PG_DB="${POSTGRES_DB:-molluscai}"
 
