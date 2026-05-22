@@ -128,6 +128,18 @@ async def search(
             )
 
 
+@router.get("/search", include_in_schema=False)
+async def _search_method_not_allowed() -> None:
+    # Guard against FastAPI matching GET /auction/{item_no} for the literal
+    # path "/auction/search" and returning a misleading int_parsing 422.
+    # The real endpoint is POST /auction/search.
+    raise HTTPException(
+        status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+        detail="Method Not Allowed. Use POST /auction/search.",
+        headers={"Allow": "POST"},
+    )
+
+
 @router.get("/{item_no}", response_model=AuctionDetail)
 async def get_detail(
     item_no: int,
