@@ -97,7 +97,7 @@ export function firstImageUrl(item) {
 }
 
 export function originalAuctionUrl(itemNo) {
-  return `${SHELL_IMAGE_BASE}auction_shell.php?id=${xorId(itemNo)}&pres=1`
+  return `${SHELL_IMAGE_BASE}auction_shell.php?id=${itemNo}&pres=1`
 }
 
 const XOR_KEY = 'tukechao'
