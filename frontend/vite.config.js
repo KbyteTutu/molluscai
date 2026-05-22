@@ -20,16 +20,6 @@ export default defineConfig({
         target: 'http://localhost:9002',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/minio/, '')
-      },
-      '/ganvana': {
-        target: 'https://www.ganvana.com',
-        changeOrigin: true,
-        secure: true,
-        rewrite: (path) => path.replace(/^\/ganvana/, ''),
-        headers: {
-          'Origin': 'https://www.ganvana.com',
-          'Referer': 'https://www.ganvana.com/'
-        }
       }
     }
   }

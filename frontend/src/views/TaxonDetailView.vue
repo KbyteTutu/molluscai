@@ -1,13 +1,11 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import axios from 'axios'
 import { taxaApi } from '@/api'
-import { ArrowLeft, ExternalLink, History, Languages, Map, GitBranch, Network, BookOpen, Search, Loader2 } from 'lucide-vue-next'
+import { ArrowLeft, ExternalLink, History, Languages, Map, GitBranch, Network } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
-import Input from '@/components/ui/Input.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import Alert from '@/components/ui/Alert.vue'
 import AlertTitle from '@/components/ui/AlertTitle.vue'
@@ -111,47 +109,7 @@ const externalIdLink = (source, id) => {
   return null
 }
 
-// --- 冈瓦纳英汉博物词典 ---
-const ganvanaQuery = ref('')
-const ganvanaResults = ref([])
-const ganvanaLoading = ref(false)
-const ganvanaError = ref('')
-const ganvanaSearched = ref(false)
-
-async function searchGanvana() {
-  const keyword = ganvanaQuery.value.trim()
-  if (!keyword) return
-  ganvanaLoading.value = true
-  ganvanaError.value = ''
-  try {
-    const params = new URLSearchParams()
-    params.append('keyword', keyword)
-    const { data } = await axios.post('/ganvana/searchDic', params, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest'
-      },
-      transformRequest: [(d) => d]
-    })
-    ganvanaResults.value = Array.isArray(data) ? data : []
-    ganvanaSearched.value = true
-  } catch (e) {
-    ganvanaError.value = e.response?.data?.message || e.message || '查询失败'
-    ganvanaResults.value = []
-  } finally {
-    ganvanaLoading.value = false
-  }
-}
-
-const ganvanaTopResults = computed(() => ganvanaResults.value.slice(0, 10))
-
-// 默认填入物种学名（不含作者）并自动检索一次
-watch(() => taxon.value?.scientificname, (name) => {
-  if (name && !ganvanaQuery.value) {
-    ganvanaQuery.value = name
-    searchGanvana()
-  }
-}, { immediate: false })
+// --- 冈瓦纳英汉博物词典 已下线（ECS 出口无法访问 ganvana.com）---
 
 watch(() => route.params.aphiaId, () => { if (route.params.aphiaId) load() })
 onMounted(load)
@@ -321,77 +279,6 @@ onMounted(load)
             </dd>
           </div>
         </dl>
-      </Card>
-
-      <Card class="p-6 border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 via-transparent to-transparent">
-        <div class="flex items-start justify-between gap-3 mb-1 flex-wrap">
-          <div class="space-y-0.5">
-            <a
-              href="https://ganvana.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex items-center gap-1.5 font-serif text-lg font-semibold text-foreground hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors group"
-            >
-              <BookOpen class="size-4 text-emerald-600 dark:text-emerald-400" />
-              冈瓦纳英汉博物词典
-              <ExternalLink class="size-3.5 opacity-0 group-hover:opacity-70 transition-opacity" />
-            </a>
-            <a
-              href="https://ganvana.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block text-[11px] text-muted-foreground hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline transition-colors"
-            >
-              点击进入冈瓦纳自然网 ›
-            </a>
-          </div>
-        </div>
-
-        <form @submit.prevent="searchGanvana" class="flex items-stretch gap-2 mt-4">
-          <Input
-            v-model="ganvanaQuery"
-            placeholder="输入物种名（拉丁名或属名）"
-            class="flex-1"
-            autocomplete="off"
-          />
-          <Button type="submit" :disabled="ganvanaLoading || !ganvanaQuery.trim()" size="default">
-            <Loader2 v-if="ganvanaLoading" class="size-4 animate-spin" />
-            <Search v-else class="size-4" />
-            {{ ganvanaLoading ? '查询中…' : '查询' }}
-          </Button>
-        </form>
-
-        <Alert v-if="ganvanaError" variant="destructive" class="mt-3">
-          <AlertTitle>查询失败</AlertTitle>
-          <AlertDescription>{{ ganvanaError }}</AlertDescription>
-        </Alert>
-
-        <div v-if="ganvanaSearched && !ganvanaError" class="mt-4">
-          <div v-if="ganvanaTopResults.length === 0" class="text-sm text-muted-foreground py-6 text-center">
-            未找到匹配条目
-          </div>
-          <ul v-else class="divide-y divide-border/60 -mx-2">
-            <li
-              v-for="r in ganvanaTopResults"
-              :key="r.id"
-              class="px-3 py-2.5 hover:bg-emerald-500/5 transition-colors rounded"
-            >
-              <div class="flex items-baseline justify-between gap-3 flex-wrap">
-                <div class="flex-1 min-w-0 space-y-0.5">
-                  <div class="flex items-baseline gap-2 flex-wrap">
-                    <span v-if="r.ch" class="font-medium text-foreground">{{ r.ch }}</span>
-                    <span v-if="r.en" class="text-xs text-muted-foreground">{{ r.en.trim() }}</span>
-                  </div>
-                  <div class="font-serif italic text-sm text-muted-foreground/90 truncate">{{ r.lat }}</div>
-                </div>
-                <span class="text-[10px] font-mono text-muted-foreground/60 shrink-0">#{{ r.id }}</span>
-              </div>
-            </li>
-          </ul>
-          <div v-if="ganvanaResults.length > ganvanaTopResults.length" class="mt-3 text-[11px] text-muted-foreground text-center">
-            共 {{ ganvanaResults.length }} 条结果，仅展示前 {{ ganvanaTopResults.length }} 条
-          </div>
-        </div>
       </Card>
 
       <p v-if="taxon.citation" class="text-xs text-muted-foreground leading-relaxed border-t pt-4">
