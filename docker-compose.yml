@@ -70,6 +70,9 @@ services:
     environment:
       POSTGRES_HOST: "postgres"
       POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-mollusc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mollusc_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-molluscai}
       REDIS_URL: "redis://redis:6379/0"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
@@ -104,6 +107,9 @@ services:
     environment:
       POSTGRES_HOST: "postgres"
       POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-mollusc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mollusc_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-molluscai}
       REDIS_URL: "redis://redis:6379/0"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
@@ -133,6 +139,9 @@ services:
     environment:
       POSTGRES_HOST: "postgres"
       POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-mollusc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mollusc_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-molluscai}
       REDIS_URL: "redis://redis:6379/0"
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/0"
