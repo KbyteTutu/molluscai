@@ -42,6 +42,7 @@ const anonError = ref(null)
 const filters = reactive({
   name: '', family: '', size: '', locality: '',
   price_min: null, price_max: null,
+  size_min: null, size_max: null, has_no_size: false,
   end_date_from: '',
   end_date_to: '',
   seller: '', is_sold: '',
@@ -65,6 +66,7 @@ const advancedFilterCount = computed(() => {
   let n = 0
   for (const k of ['family','size','locality','seller','is_sold','end_date_from','end_date_to']) if (filters[k]) n++
   if (filters.price_min !== null || filters.price_max !== null) n++
+  if (filters.size_min !== null || filters.size_max !== null || filters.has_no_size) n++
   return n
 })
 
@@ -75,6 +77,10 @@ function buildPayload() {
     if (k === 'is_sold') {
       if (v === 'true') out.is_sold = true
       else if (v === 'false') out.is_sold = false
+      continue
+    }
+    if (k === 'has_no_size') {
+      if (v === true) out.has_no_size = true
       continue
     }
     if (v !== '' && v !== null && v !== undefined) out[k] = v

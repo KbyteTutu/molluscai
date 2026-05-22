@@ -1,6 +1,6 @@
 from typing import Optional, Tuple, List
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, Numeric
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.auction import Auction
@@ -21,10 +21,29 @@ async def search_auctions(
         )
     if filters.family:
         conditions.append(Auction.family.ilike(f"%{filters.family}%"))
+    if filters.locality:
+        conditions.append(
+            func.similarity(Auction.locality, filters.locality) > 0.1
+        )
     if filters.size:
         conditions.append(Auction.size.ilike(f"%{filters.size}%"))
-    if filters.locality:
-        conditions.append(Auction.locality.ilike(f"%{filters.locality}%"))
+    if filters.size_min is not None or filters.size_max is not None or filters.has_no_size:
+        # Extract leading numeric value from size text (e.g. "50 mm" → 50).
+        # Non-numeric prefixes ("See description mm") → NULL, silently excluded.
+        from sqlalchemy import case as sa_case, literal
+        size_num = sa_case(
+            (Auction.size.op("~")("^\\d"),
+             func.cast(func.regexp_replace(Auction.size, r"^(\d+(?:\.\d+)?).*", r"\1"), Numeric)),
+            else_=None,
+        )
+        if filters.has_no_size:
+            conditions.append(func.coalesce(size_num, -1) == -1)
+        else:
+            conditions.append(size_num.isnot(None))
+            if filters.size_min is not None:
+                conditions.append(size_num >= filters.size_min)
+            if filters.size_max is not None:
+                conditions.append(size_num <= filters.size_max)
     if filters.price_min is not None:
         conditions.append(Auction.final_price >= filters.price_min)
     if filters.price_max is not None:

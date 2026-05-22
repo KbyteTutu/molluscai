@@ -1,6 +1,9 @@
 <script setup>
+import { ref, watch } from 'vue'
+import { auctionApi } from '@/api'
 import Input from '@/components/ui/Input.vue'
 import Label from '@/components/ui/Label.vue'
+import Checkbox from '@/components/ui/Checkbox.vue'
 
 const props = defineProps({ modelValue: { type: Object, required: true } })
 const emit = defineEmits(['update:modelValue'])
@@ -8,22 +11,112 @@ const emit = defineEmits(['update:modelValue'])
 function update(field, value) {
   emit('update:modelValue', { ...props.modelValue, [field]: value })
 }
+
+// ── Family autocomplete ────────────────────────────────────
+const familyQ = ref('')
+const familyOptions = ref([])
+const familyOpen = ref(false)
+let familyTimer = null
+
+async function searchFamilies(query) {
+  if (!query || query.length < 1) {
+    familyOptions.value = []
+    return
+  }
+  try {
+    const res = await auctionApi.families(query)
+    familyOptions.value = res.data || []
+  } catch { /* ignore */ }
+}
+
+watch(familyQ, (v) => {
+  clearTimeout(familyTimer)
+  if (v && v.length >= 1) {
+    familyTimer = setTimeout(() => searchFamilies(v), 200)
+    familyOpen.value = true
+  } else {
+    familyOpen.value = false
+  }
+})
+
+function selectFamily(family) {
+  update('family', family)
+  familyQ.value = family
+  familyOpen.value = false
+}
+
+function clearFamily() {
+  update('family', '')
+  familyQ.value = ''
+  familyOpen.value = false
+}
 </script>
 
 <template>
   <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-    <div class="space-y-1.5">
+    <!-- Family autocomplete -->
+    <div class="space-y-1.5 relative">
       <Label for="f-family">科 / Family</Label>
-      <Input id="f-family" :model-value="modelValue.family" placeholder="例: Conidae" @update:modelValue="update('family', $event)" />
+      <div class="relative">
+        <Input
+          id="f-family"
+          :model-value="familyQ || modelValue.family"
+          placeholder="搜索科名…"
+          @update:modelValue="familyQ = $event; if ($event === '') clearFamily()"
+          @focus="modelValue.family && !familyQ ? (familyQ = modelValue.family) : null"
+        />
+        <!-- dropdown -->
+        <ul
+          v-if="familyOpen && familyOptions.length"
+          class="absolute z-20 mt-1 w-full max-h-52 overflow-y-auto rounded-md border border-border bg-popover shadow-md"
+        >
+          <li
+            v-for="f in familyOptions"
+            :key="f.family"
+            class="flex items-center justify-between px-3 py-1.5 text-sm cursor-pointer hover:bg-accent"
+            @mousedown.prevent="selectFamily(f.family)"
+          >
+            <span>{{ f.family }}</span>
+            <span class="text-[10px] text-muted-foreground tabular-nums">{{ f.count.toLocaleString() }}</span>
+          </li>
+        </ul>
+      </div>
     </div>
+
+    <!-- Size range -->
     <div class="space-y-1.5">
-      <Label for="f-size">尺寸 / Size</Label>
-      <Input id="f-size" :model-value="modelValue.size" placeholder="例: 50 mm" @update:modelValue="update('size', $event)" />
+      <Label>尺寸 / Size (mm)</Label>
+      <div class="flex items-center gap-2">
+        <Input
+          type="number"
+          :model-value="modelValue.size_min"
+          placeholder="最小"
+          @update:modelValue="update('size_min', $event === '' ? null : Number($event))"
+        />
+        <span class="text-muted-foreground">—</span>
+        <Input
+          type="number"
+          :model-value="modelValue.size_max"
+          placeholder="最大"
+          @update:modelValue="update('size_max', $event === '' ? null : Number($event))"
+        />
+      </div>
+      <div class="flex items-center gap-1.5 pt-1">
+        <Checkbox
+          id="f-no-size"
+          :model-value="modelValue.has_no_size"
+          @update:modelValue="update('has_no_size', $event)"
+        />
+        <Label for="f-no-size" class="text-xs text-muted-foreground cursor-pointer">无尺寸数据</Label>
+      </div>
     </div>
+
+    <!-- Locality (text, fuzzy on backend) -->
     <div class="space-y-1.5">
       <Label for="f-locality">产地 / Locality</Label>
-      <Input id="f-locality" :model-value="modelValue.locality" placeholder="例: Philippines" @update:modelValue="update('locality', $event)" />
+      <Input id="f-locality" :model-value="modelValue.locality" placeholder="模糊搜索，如 Philippines" @update:modelValue="update('locality', $event)" />
     </div>
+
     <div class="space-y-1.5">
       <Label for="f-seller">卖家 / Seller</Label>
       <Input id="f-seller" :model-value="modelValue.seller" placeholder="" @update:modelValue="update('seller', $event)" />

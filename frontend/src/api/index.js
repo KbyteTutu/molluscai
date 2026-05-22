@@ -92,7 +92,8 @@ export const auctionApi = {
   search: (params) => apiClient.post('/auction/search', params),
   recent: () => apiClient.get('/auction/recent'),
   getDetail: (itemNo) => apiClient.get(`/auction/${itemNo}`),
-  taxonMatch: (itemNo) => apiClient.get(`/auction/${itemNo}/taxon-match`)
+  taxonMatch: (itemNo) => apiClient.get(`/auction/${itemNo}/taxon-match`),
+  families: (q = '') => apiClient.get('/auction/families', { params: { q } })
 }
 
 export const taxaApi = {

@@ -4,12 +4,14 @@ from typing import Optional
 
 import redis
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     Permission,
     RequirePermission,
     get_current_user_optional,
+    get_current_user,
 )
 from app.config import settings
 from app.core.quota import (
@@ -21,6 +23,7 @@ from app.core.quota import (
 from app.core.request_ip import get_client_ip
 from app.database import get_db
 from app.models.user import User
+from app.models.auction import Auction
 from app.schemas.auction import (
     AuctionDetail,
     AuctionRead,
@@ -138,6 +141,24 @@ async def _search_method_not_allowed() -> None:
         detail="Method Not Allowed. Use POST /auction/search.",
         headers={"Allow": "POST"},
     )
+
+
+@router.get("/families")
+async def list_families(
+    q: str = Query(default="", description="Filter by family name (ILIKE)"),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Return distinct family names with record counts for autocomplete."""
+    stmt = (
+        select(Auction.family, func.count(Auction.id).label("n"))
+        .where(Auction.family.isnot(None), Auction.family != "")
+    )
+    if q.strip():
+        stmt = stmt.where(Auction.family.ilike(f"%{q.strip()}%"))
+    stmt = stmt.group_by(Auction.family).order_by(func.count(Auction.id).desc()).limit(40)
+    rows = await db.execute(stmt)
+    return [{"family": r.family, "count": int(r.n)} for r in rows]
 
 
 @router.get("/{item_no}", response_model=AuctionDetail)

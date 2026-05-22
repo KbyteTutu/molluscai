@@ -9,6 +9,9 @@ class AuctionSearchRequest(BaseModel):
     name: Optional[str] = None
     family: Optional[str] = None
     size: Optional[str] = None
+    size_min: Optional[Decimal] = None
+    size_max: Optional[Decimal] = None
+    has_no_size: Optional[bool] = None
     locality: Optional[str] = None
     price_min: Optional[Decimal] = None
     price_max: Optional[Decimal] = None
