@@ -1,4 +1,5 @@
 import json
+from datetime import date, timedelta
 from typing import Optional
 
 import redis
@@ -34,7 +35,7 @@ router = APIRouter()
 require_auction = RequirePermission(Permission.SEARCH_AUCTION)
 
 RECENT_LIMIT_HARD_CAP = 12
-RECENT_CACHE_KEY = "molluscai:auction:recent:v1"
+RECENT_CACHE_KEY_PREFIX = "molluscai:auction:recent:v2"
 RECENT_CACHE_TTL = 60
 
 _redis_pool: Optional[redis.ConnectionPool] = None
@@ -49,23 +50,40 @@ def _redis() -> redis.Redis:
     return redis.Redis(connection_pool=_redis_pool)
 
 
+def _last_month_range(today: Optional[date] = None) -> tuple[date, date]:
+    today = today or date.today()
+    first_of_this_month = today.replace(day=1)
+    last_of_prev = first_of_this_month - timedelta(days=1)
+    first_of_prev = last_of_prev.replace(day=1)
+    return first_of_prev, last_of_prev
+
+
 @router.get("/recent", response_model=SearchResponse)
 async def recent_public(
     db: AsyncSession = Depends(get_db),
 ):
+    date_from, date_to = _last_month_range()
+    cache_key = f"{RECENT_CACHE_KEY_PREFIX}:{date_from.isoformat()}:{date_to.isoformat()}"
+
     try:
-        cached = _redis().get(RECENT_CACHE_KEY)
+        cached = _redis().get(cache_key)
         if cached:
             return SearchResponse.model_validate(json.loads(cached))
     except Exception:
         cached = None
 
-    filters = AuctionSearchRequest(offset=0, limit=RECENT_LIMIT_HARD_CAP, sort="end_date_desc")
+    filters = AuctionSearchRequest(
+        offset=0,
+        limit=RECENT_LIMIT_HARD_CAP,
+        sort="price_desc",
+        end_date_from=date_from,
+        end_date_to=date_to,
+    )
     items, total = await search_auctions(db, filters)
     response = SearchResponse(items=items, total=total, offset=0, limit=RECENT_LIMIT_HARD_CAP)
 
     try:
-        _redis().setex(RECENT_CACHE_KEY, RECENT_CACHE_TTL, response.model_dump_json())
+        _redis().setex(cache_key, RECENT_CACHE_TTL, response.model_dump_json())
     except Exception:
         pass
 
