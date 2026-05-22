@@ -7,14 +7,29 @@ import TaxonName from '@/components/common/TaxonName.vue'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
 import CompareToggle from '@/components/auction/CompareToggle.vue'
 import { useCompareStore } from '@/stores/compare'
-import { formatPrice, formatDate, firstImageUrl, xorId, cn } from '@/lib/utils'
+import { formatPrice, formatDate, firstImagePair, xorId, cn } from '@/lib/utils'
 
 const props = defineProps({ item: { type: Object, required: true } })
 const router = useRouter()
 const compare = useCompareStore()
-const imgFailed = ref(false)
+const cachedFailed = ref(false)
+const originFailed = ref(false)
 
 const inCompare = computed(() => compare.has(props.item.item_no))
+
+const pair = computed(() => firstImagePair(props.item))
+const hasAnyImage = computed(() => Boolean(pair.value.cached || pair.value.origin))
+const currentSrc = computed(() => {
+  const { cached, origin } = pair.value
+  if (cached && !cachedFailed.value) return cached
+  if (origin && !originFailed.value) return origin
+  return null
+})
+
+function onImageError() {
+  if (currentSrc.value === pair.value.cached) cachedFailed.value = true
+  else if (currentSrc.value === pair.value.origin) originFailed.value = true
+}
 
 function open() {
   router.push(`/auctions/${xorId(props.item.item_no)}`)
@@ -31,14 +46,14 @@ function open() {
   >
     <div class="relative aspect-[4/3] bg-muted/40 flex items-center justify-center overflow-hidden">
       <img
-        v-if="firstImageUrl(item) && !imgFailed"
-        :src="firstImageUrl(item)"
+        v-if="currentSrc"
+        :src="currentSrc"
         :alt="item.name"
         loading="lazy"
         class="h-full w-full object-cover"
-        @error="imgFailed = true"
+        @error="onImageError"
       />
-      <span v-else-if="firstImageUrl(item) && imgFailed" class="text-[11px] text-muted-foreground px-2 text-center">图片源已被删除，不可用</span>
+      <span v-else-if="hasAnyImage" class="text-[11px] text-muted-foreground px-2 text-center">图片源已被删除，不可用</span>
       <ShellLogo v-else :size="48" class="text-muted-foreground/30" />
       <CompareToggle
         :item="item"

@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowLeft, ExternalLink, X } from 'lucide-vue-next'
 import { useCompareStore } from '@/stores/compare'
@@ -9,10 +9,35 @@ import Badge from '@/components/ui/Badge.vue'
 import TaxonName from '@/components/common/TaxonName.vue'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { formatPrice, formatDate, firstImageUrl, originalAuctionUrl, xorId } from '@/lib/utils'
+import { formatPrice, formatDate, firstImagePair, originalAuctionUrl, xorId } from '@/lib/utils'
 
 const store = useCompareStore()
 const router = useRouter()
+
+const imageFailed = reactive({})
+
+function pairFor(item) {
+  return firstImagePair(item)
+}
+function hasAnyImage(item) {
+  const p = pairFor(item)
+  return Boolean(p.cached || p.origin)
+}
+function currentSrc(item) {
+  const p = pairFor(item)
+  const failed = imageFailed[item.item_no] || {}
+  if (p.cached && !failed.cached) return p.cached
+  if (p.origin && !failed.origin) return p.origin
+  return null
+}
+function onImageError(item) {
+  const p = pairFor(item)
+  const cur = currentSrc(item)
+  const next = imageFailed[item.item_no] ? { ...imageFailed[item.item_no] } : {}
+  if (cur === p.cached) next.cached = true
+  else if (cur === p.origin) next.origin = true
+  imageFailed[item.item_no] = next
+}
 
 const fields = [
   { key: 'family', label: '科' },
@@ -82,12 +107,13 @@ const priceMin = computed(() => {
         <Card v-for="item in store.items" :key="item.item_no" class="overflow-hidden">
           <div class="aspect-square bg-muted/40 flex items-center justify-center overflow-hidden">
             <img
-              v-if="firstImageUrl(item)"
-              :src="firstImageUrl(item)"
+              v-if="currentSrc(item)"
+              :src="currentSrc(item)"
               :alt="item.name"
               class="h-full w-full object-cover"
-              @error="$event.target.style.display='none'"
+              @error="onImageError(item)"
             />
+            <span v-else-if="hasAnyImage(item)" class="text-[11px] text-muted-foreground px-2 text-center">图片源已被删除，不可用</span>
             <ShellLogo v-else :size="40" class="text-muted-foreground/30" />
           </div>
           <div class="p-3 space-y-2">

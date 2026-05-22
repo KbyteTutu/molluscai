@@ -96,6 +96,11 @@ export function firstImageUrl(item) {
   return imageUrls(item)[0] || null
 }
 
+export function firstImagePair(item) {
+  const pairs = imageUrlsWithFallback(item)
+  return pairs[0] || { cached: null, origin: null }
+}
+
 export function originalAuctionUrl(itemNo) {
   return `${SHELL_IMAGE_BASE}auction_shell.php?id=${itemNo}&pres=1`
 }
