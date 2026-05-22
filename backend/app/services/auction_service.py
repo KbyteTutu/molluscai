@@ -47,14 +47,18 @@ async def search_auctions(
     total = total_result.scalar_one()
 
     sort_map = {
-        "price_desc": Auction.final_price.desc().nullslast(),
-        "price_asc": Auction.final_price.asc().nullslast(),
-        "item_no_desc": Auction.item_no.desc(),
-        "end_date_desc": Auction.end_date.desc().nullslast(),
+        "price_desc":   [Auction.final_price.desc().nullslast()],
+        "price_asc":    [Auction.final_price.asc().nullslast()],
+        "item_no_desc": [Auction.item_no.desc()],
+        "end_date_desc":[Auction.end_date.desc().nullslast()],
+        "relevance": [
+            func.similarity(Auction.name, filters.name).desc(),
+            Auction.end_date.desc().nullslast(),
+        ] if filters.name else [Auction.end_date.desc().nullslast()],
     }
-    order_by = sort_map.get(filters.sort, Auction.end_date.desc().nullslast())
+    order_cols = sort_map.get(filters.sort or "relevance", sort_map["end_date_desc"])
 
-    query = base_query.order_by(order_by).offset(filters.offset).limit(filters.limit)
+    query = base_query.order_by(*order_cols).offset(filters.offset).limit(filters.limit)
     result = await db.execute(query)
     items = result.scalars().all()
 

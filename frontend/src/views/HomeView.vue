@@ -39,25 +39,17 @@ const anonItems = ref([])
 const anonLoading = ref(false)
 const anonError = ref(null)
 
-function lastMonthRange() {
-  const now = new Date()
-  const from = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const to = new Date(now.getFullYear(), now.getMonth(), 0)
-  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }
-}
-
-const { from: defaultFrom, to: defaultTo } = lastMonthRange()
-
 const filters = reactive({
   name: '', family: '', size: '', locality: '',
   price_min: null, price_max: null,
-  end_date_from: defaultFrom,
-  end_date_to: defaultTo,
+  end_date_from: '',
+  end_date_to: '',
   seller: '', is_sold: '',
-  sort: 'price_desc'
+  sort: 'relevance'
 })
 
 const SORT_OPTIONS = [
+  { value: 'relevance', label: '相关度 · 最近优先' },
   { value: 'price_desc', label: '价格 · 由高到低' },
   { value: 'price_asc', label: '价格 · 由低到高' },
   { value: 'end_date_desc', label: '日期 · 最新优先' },
@@ -171,7 +163,7 @@ watch(isAuthenticated, async (next, prev) => {
     <header class="space-y-3">
       <h1 class="font-serif text-3xl md:text-4xl font-semibold tracking-tight">拍卖记录检索</h1>
       <p class="text-sm text-muted-foreground max-w-2xl leading-relaxed">
-        查询 shellauction.net 的历史拍品数据。数据每月1日更新，默认显示上月成交记录，按成交价由高到低排列。
+          查询 shellauction.net 的历史拍品数据。数据每月1日更新，默认按相关度排序，优先显示日期临近的结果。
         <span class="text-muted-foreground/70">All records are for reference and research purposes only.</span>
       </p>
     </header>
