@@ -90,12 +90,30 @@ ensure_env() {
     err "    ./dev prod-secrets > .env  # then fill in API keys"
     die "aborted"
   fi
-  if grep -qE '^(JWT_SECRET_KEY|JWT_REFRESH_SECRET_KEY|ENCRYPTION_KEY)=replace-me' "$ROOT/.env"; then
-    err ".env still contains 'replace-me-...' placeholders for secrets."
-    err "Generate new ones with: ./dev prod-secrets"
-    die "aborted"
-  fi
-  ok ".env present and secrets non-default"
+
+  local required_nonempty=(POSTGRES_PASSWORD MINIO_ROOT_PASSWORD JWT_SECRET_KEY JWT_REFRESH_SECRET_KEY ENCRYPTION_KEY)
+  local required_no_placeholder=(JWT_SECRET_KEY JWT_REFRESH_SECRET_KEY ENCRYPTION_KEY)
+  local errors=0
+
+  for key in "${required_nonempty[@]}"; do
+    local val
+    val=$(grep -E "^${key}=" "$ROOT/.env" | head -1 | cut -d= -f2-)
+    if [[ -z "$val" ]]; then
+      err ".env: ${key} is missing or empty (production deploys MUST set this)"
+      errors=$((errors + 1))
+    fi
+  done
+
+  for key in "${required_no_placeholder[@]}"; do
+    if grep -qE "^${key}=replace-me" "$ROOT/.env"; then
+      err ".env: ${key} still has 'replace-me-...' placeholder."
+      err "Generate new ones with: ./dev prod-secrets"
+      errors=$((errors + 1))
+    fi
+  done
+
+  [[ $errors -eq 0 ]] || die "aborted ($errors .env validation error(s))"
+  ok ".env validated"
 }
 
 ensure_infra() {

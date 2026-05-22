@@ -35,8 +35,6 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6380/0"
 
     # MinIO
-    MINIO_ROOT_USER: str = "minioadmin"
-    MINIO_ROOT_PASSWORD: str = "minioadmin"
     MINIO_ENDPOINT: str = "localhost:9002"
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
