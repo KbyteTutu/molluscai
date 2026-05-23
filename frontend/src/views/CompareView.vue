@@ -160,7 +160,7 @@ const priceMin = computed(() => {
           <Button variant="outline" size="sm" class="w-full" @click="router.push(`/auctions/${xorId(item.item_no)}`)">
             查看详情
           </Button>
-          <a :href="originalAuctionUrl(item.item_no)" target="_blank" rel="noopener noreferrer" class="block">
+          <a v-if="!item.is_sold" :href="originalAuctionUrl(item.item_no)" target="_blank" rel="noopener noreferrer" class="block">
             <Button variant="ghost" size="sm" class="w-full">
               <ExternalLink class="size-3.5" /> 原始页面
             </Button>
