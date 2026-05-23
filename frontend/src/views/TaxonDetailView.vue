@@ -119,6 +119,16 @@ const externalIdLink = (source, id) => {
   return null
 }
 
+const sortedVernaculars = computed(() => {
+  return [...vernaculars.value].sort((a, b) => {
+    const aZh = a.language_code === 'zh' || a.language_code?.startsWith('zh')
+    const bZh = b.language_code === 'zh' || b.language_code?.startsWith('zh')
+    if (aZh && !bZh) return -1
+    if (!aZh && bZh) return 1
+    return 0
+  })
+})
+
 // --- 冈瓦纳英汉博物词典 已下线（ECS 出口无法访问 ganvana.com）---
 
 watch(() => route.params.aphiaId, () => { if (route.params.aphiaId) load() })
@@ -201,11 +211,11 @@ onMounted(load)
 
       <Card v-if="vernaculars.length" class="p-6">
         <div class="flex items-center gap-2 mb-3 text-[10px] uppercase tracking-widest text-muted-foreground">
-          <Languages class="size-3.5" /> 各语言俗名 / Vernaculars <span class="text-muted-foreground/60">({{ vernaculars.length }})</span>
+          <Languages class="size-3.5" /> 各语言俗名 / Vernaculars <span class="text-muted-foreground/60">({{ sortedVernaculars.length }})</span>
         </div>
         <ul class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
           <li
-            v-for="(v, idx) in vernaculars"
+            v-for="(v, idx) in sortedVernaculars"
             :key="`${v.vernacular}-${idx}`"
             class="flex items-baseline justify-between gap-2"
           >
