@@ -44,6 +44,8 @@ const pageInfo = computed(() => {
   return `${formatNumber(s)} – ${formatNumber(e)} / ${formatNumber(total.value)}`
 })
 
+const zhNames = ref({})
+
 async function runSearch(reset = true) {
   if (reset) offset.value = 0
   loading.value = true
@@ -65,6 +67,14 @@ async function runSearch(reset = true) {
   } finally {
     loading.value = false
   }
+  if (!Object.keys(zhNames.value).length) {
+    try { const r = await taxaApi.rankNamesZh(); zhNames.value = r.data } catch {}
+  }
+}
+
+function zhName(latin) {
+  const zh = zhNames.value[latin]
+  return zh ? `${latin} ${zh}` : latin
 }
 
 function nextPage() {
@@ -207,8 +217,8 @@ onMounted(() => runSearch(true))
             </div>
             <div class="mt-0.5 text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
               <span v-if="t.rank" class="uppercase tracking-wider text-[10px]">{{ t.rank }}</span>
-              <span v-if="t.family">· {{ t.family }}</span>
-              <span v-if="t.class" class="text-muted-foreground/70">· {{ t.class }}</span>
+              <span v-if="t.family">· {{ zhName(t.family) }}</span>
+              <span v-if="t.class" class="text-muted-foreground/70">· {{ zhName(t.class) }}</span>
               <span class="font-mono text-muted-foreground/70">· #{{ t.aphia_id }}</span>
             </div>
           </div>

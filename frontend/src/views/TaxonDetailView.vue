@@ -25,6 +25,7 @@ const distributions = ref([])
 const children = ref([])
 const classification = ref([])
 const externalIds = ref([])
+const zhNames = ref({})
 
 async function load() {
   loading.value = true
@@ -61,25 +62,34 @@ async function load() {
   if (c) children.value = c.data
   if (cls) classification.value = cls.data
   if (x) externalIds.value = x.data
+  if (!Object.keys(zhNames.value).length) {
+    try { const r = await taxaApi.rankNamesZh(); zhNames.value = r.data } catch {}
+  }
+}
+
+function withZh(latin) {
+  if (!latin) return latin
+  const zh = zhNames.value[latin]
+  return zh ? `${latin} ${zh}` : latin
 }
 
 const classificationDisplay = computed(() => {
   if (!taxon.value) return []
   const t = taxon.value
   return [
-    ['界 Kingdom', t.kingdom],
-    ['门 Phylum', t.phylum],
-    ['亚门 Subphylum', t.subphylum],
-    ['纲 Class', t.class],
-    ['亚纲 Subclass', t.subclass],
-    ['下纲 Infraclass', t.infraclass],
-    ['总目 Superorder', t.superorder],
-    ['目 Order', t.order],
-    ['亚目 Suborder', t.suborder],
-    ['下目 Infraorder', t.infraorder],
-    ['总科 Superfamily', t.superfamily],
-    ['科 Family', t.family],
-    ['属 Genus', t.genus],
+    ['界 Kingdom', withZh(t.kingdom)],
+    ['门 Phylum', withZh(t.phylum)],
+    ['亚门 Subphylum', withZh(t.subphylum)],
+    ['纲 Class', withZh(t.class)],
+    ['亚纲 Subclass', withZh(t.subclass)],
+    ['下纲 Infraclass', withZh(t.infraclass)],
+    ['总目 Superorder', withZh(t.superorder)],
+    ['目 Order', withZh(t.order)],
+    ['亚目 Suborder', withZh(t.suborder)],
+    ['下目 Infraorder', withZh(t.infraorder)],
+    ['总科 Superfamily', withZh(t.superfamily)],
+    ['科 Family', withZh(t.family)],
+    ['属 Genus', withZh(t.genus)],
     ['种 Species', t.species_epithet]
   ].filter(([, v]) => v)
 })

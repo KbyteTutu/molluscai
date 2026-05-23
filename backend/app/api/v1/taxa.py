@@ -131,6 +131,16 @@ async def search_taxa(
             )
 
 
+@router.get("/rank-names-zh")
+async def rank_names_zh(
+    db: AsyncSession = Depends(get_db),
+):
+    rows = await db.execute(
+        text("SELECT latin_name, chinese_name FROM taxon_name_zh"),
+    )
+    return {r[0]: r[1] for r in rows}
+
+
 @router.get("/{aphia_id}", response_model=TaxonRead)
 async def get_taxon(
     aphia_id: int,
