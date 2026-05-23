@@ -1148,42 +1148,56 @@ docker compose cp data_import/ganvana.xlsx backend:/app/data_import/ganvana.xlsx
 docker compose exec backend python -m scripts.import_ganvana_zh
 
 # 自定义修改：编辑 taxa_vernaculars 表（language_code='zh'），
-# 下次重新导入会被覆盖。
-```
+# 清空重建时需先恢复备份的 zh 数据
 
----
 
-## 运行命令
+## 信息纠错功能 (2026-05-23) ✅
 
-```bash
-# 启动全部服务
-./dev up
+用户可对物种/文献/拍卖数据提交纠错建议，管理员审核后批准或驳回。
 
-# 仅重启后端（代码修改后）
-./dev restart backend
+### 核心设计
 
-# 仅重启 celery-worker（任务代码修改后）
-./dev restart celery-worker
+- **通用目标系统**: `target_type` + `target_id` (VARCHAR) 支持任意实体类型的纠错
+- **三段式状态**: `pending` → 管理员 `approved` / `rejected`，管理员备注解释原因
+- **24h 限流**: 每用户 24 小时内最多提交 20 条纠错
 
-# 查看日志
-./dev logs backend
-./dev logs celery-worker
+### 数据库
 
-# 触发采集（需 ADMIN 环境变量）
-./dev scrape 20
-./dev images 10
+- `corrections` 表：`id BIGSERIAL PK`, `user_id UUID FK→users`, `target_type VARCHAR(50)`, `target_id VARCHAR(100)`, `target_title VARCHAR(500)`, `field_name`, `current_value`, `suggested_value`, `note`, `status VARCHAR(20) DEFAULT 'pending'`, `admin_note`, `ip_address`, `user_agent`, `created_at` / `updated_at`
+- 3 个索引：`idx_corrections_user_created`, `idx_corrections_status_created`, `idx_corrections_target`
 
-# 全栈健康检查
-./dev status
+### API 端点
 
-# WoRMS 数据导入（参见上文 "WoRMS 数据全字段导入"）
-./dev worms-import data_import/worms_mollusca.sqlite.gz
-./dev prod-import data_import/worms_mollusca.sqlite.gz \
-                  data_import/postgres_backup.sql
+| 方法 | 路径 | 权限 | 说明 |
+|------|------|------|------|
+| POST | `/api/v1/corrections` | 需登录 | 提交纠错 |
+| GET | `/api/v1/corrections/me` | 需登录 | 查看我的纠错 |
+| GET | `/api/v1/admin/corrections` | superadmin | 管理员列表（支持 status / target_type 筛选） |
+| PATCH | `/api/v1/admin/corrections/{id}` | superadmin | 审核（改 status + admin_note） |
 
-# 清空重建
-./dev nuke && ./dev up && ./dev seed
-```
+### 前端
+
+- **物种详情页** (`TaxonDetailView.vue`): WoRMS 按钮左侧新增「 ✏️ 纠错」按钮，点击弹出 Teleport 模态窗，选择字段 → 填入建议值 → 提交
+- **管理员页面** (`AdminCorrectionsView.vue`): `/admin/corrections` 路由，表格展示 + 状态/类型筛选 + 点击行展开内联编辑（状态下拉 + 备注文本框），参考 `AdminFeedbacksView.vue` 实现
+- **侧边栏**: 管理 → 「纠错管理」(Pencil icon)
+
+### 涉及文件
+
+| 文件 | 操作 |
+|------|------|
+| `infra/postgres/init/09-taxa-corrections.sql` | 新建 corrections 表 + 索引 |
+| `backend/app/models/correction.py` | 新建 Correction 模型 |
+| `backend/app/schemas/correction.py` | 新建 Pydantic schemas (创建/输出/管理更新) |
+| `backend/app/services/correction_service.py` | 新建 CRUD 服务 (创建/列表/单条/加锁查询) |
+| `backend/app/api/v1/corrections.py` | 新建用户端 API (POST + GET /me) |
+| `backend/app/api/v1/admin.py` | 修改：新增纠错管理端点（GET list + PATCH approve/reject） |
+| `backend/app/main.py` | 修改：注册 corrections 路由 |
+| `backend/app/models/__init__.py` | 修改：导出 Correction |
+| `frontend/src/api/index.js` | 修改：新增 correctionApi + adminApi.listCorrections/updateCorrection |
+| `frontend/src/views/TaxonDetailView.vue` | 修改：纠错按钮 + Teleport 弹窗表单 |
+| `frontend/src/views/AdminCorrectionsView.vue` | 新建管理员纠错审核页面 |
+| `frontend/src/router/index.js` | 修改：新增 /admin/corrections 路由 |
+| `frontend/src/components/layout/AppSidebar.vue` | 修改：新增纠错管理侧边栏项 |
 
 ## 访问地址
 
