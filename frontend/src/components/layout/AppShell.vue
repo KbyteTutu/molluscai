@@ -48,8 +48,12 @@ watch(() => route.fullPath, () => { mobileOpen.value = false })
       </main>
 
       <footer class="border-t bg-background/60">
-        <div class="mx-auto w-full max-w-6xl px-4 sm:px-6 md:px-8 py-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-          <span>© 2026</span>
+        <div class="mx-auto w-full max-w-6xl px-4 sm:px-6 md:px-8 py-4 space-y-2">
+          <p class="text-center text-[11px] text-muted-foreground leading-relaxed">
+            本站内容均由已授权资料、公开资料等渠道汇总而来，包括部分同好个人提供的信息。如有侵权情况，请邮件联系 <a href="mailto:tukechao@gmail.com" class="underline hover:text-foreground transition-colors">tukechao@gmail.com</a>
+          </p>
+          <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            <span>© 2026</span>
           <a
             href="https://beian.miit.gov.cn/"
             target="_blank"
@@ -63,6 +67,7 @@ watch(() => route.fullPath, () => { mobileOpen.value = false })
             rel="noopener noreferrer"
             class="hover:text-foreground transition-colors"
           >tutu.gold</a>
+        </div>
         </div>
       </footer>
     </div>
