@@ -14,6 +14,7 @@ import AlertTitle from '@/components/ui/AlertTitle.vue'
 import AlertDescription from '@/components/ui/AlertDescription.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import TaxonName from '@/components/common/TaxonName.vue'
+import SnailLogo from '@/components/brand/ShellLogo.vue'
 import { formatNumber, cn } from '@/lib/utils'
 
 defineOptions({ name: 'TaxaSearchView' })
@@ -33,6 +34,7 @@ const items = ref([])
 const total = ref(0)
 const loading = ref(false)
 const error = ref('')
+const hasSearched = ref(false)
 
 const RANKS = ['', 'Species', 'Genus', 'Family', 'Order', 'Class', 'Phylum']
 const STATUSES = ['', 'accepted', 'unaccepted', 'superseded combination', 'nomen dubium', 'taxon inquirendum']
@@ -48,6 +50,7 @@ const zhNames = ref({})
 
 async function runSearch(reset = true) {
   if (reset) offset.value = 0
+  hasSearched.value = true
   loading.value = true
   error.value = ''
   try {
@@ -88,7 +91,7 @@ function prevPage() {
   runSearch(false)
 }
 
-onMounted(() => runSearch(true))
+onMounted(() => {})
 </script>
 
 <template>
@@ -161,7 +164,12 @@ onMounted(() => runSearch(true))
       </CardContent>
     </Card>
 
-    <section>
+    <div v-if="!hasSearched && !loading && !items.length" class="flex flex-col items-center justify-center py-16 md:py-24 text-center">
+      <SnailLogo :size="96" class="text-muted-foreground/20 mb-6" />
+      <p class="text-lg text-muted-foreground max-w-md leading-relaxed">在上方搜索框输入学名、俗名或分类关键词，开始探索物种数据库</p>
+    </div>
+
+    <section v-else>
       <div class="flex items-end justify-between mb-4">
         <div>
           <h2 class="font-serif text-xl">检索结果</h2>

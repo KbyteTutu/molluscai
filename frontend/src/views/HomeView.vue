@@ -5,6 +5,7 @@ import { useSearchStore } from '@/stores/search'
 import { useAuthStore } from '@/stores/auth'
 import { auctionApi } from '@/api'
 import { Search, SlidersHorizontal, LayoutGrid, Rows3, ChevronDown, Lock, Sparkles, Type } from 'lucide-vue-next'
+import SnailLogo from '@/components/brand/ShellLogo.vue'
 import Card from '@/components/ui/Card.vue'
 import CardContent from '@/components/ui/CardContent.vue'
 import Input from '@/components/ui/Input.vue'
@@ -62,6 +63,7 @@ const PAGE_SIZE = 12
 const offset = ref(0)
 const totalRecords = ref(null)
 const totalSold = ref(null)
+const hasSearched = ref(false)
 
 const advancedFilterCount = computed(() => {
   let n = 0
@@ -95,6 +97,7 @@ async function runSearch(reset = true) {
     return
   }
   if (reset) offset.value = 0
+  hasSearched.value = true
   await search.searchAuctions(buildPayload())
 }
 
@@ -143,14 +146,9 @@ async function loadAnonRecent() {
   }
 }
 
-onMounted(async () => {
+onMounted(() => {
   totalRecords.value = 2990337
   totalSold.value = 1727375
-  if (isAuthenticated.value) {
-    if (!search.hasResults) await runSearch(true)
-  } else {
-    if (!anonItems.value.length) await loadAnonRecent()
-  }
 })
 
 watch(isAuthenticated, async (next, prev) => {
@@ -193,6 +191,11 @@ watch(isAuthenticated, async (next, prev) => {
         <div class="font-serif text-xl md:text-2xl mt-1">每月1日</div>
       </Card>
     </section>
+
+    <div v-if="isAuthenticated && !hasSearched && !search.loading && !search.hasResults" class="flex flex-col items-center justify-center py-16 md:py-24 text-center">
+      <SnailLogo :size="96" class="text-muted-foreground/20 mb-6" />
+      <p class="text-lg text-muted-foreground max-w-md leading-relaxed">在下方搜索框输入学名、科名、产地等关键词，开始检索 {{ formatNumber(totalRecords) }} 条拍卖记录</p>
+    </div>
 
     <Card v-if="!isAuthenticated" class="border-primary/30 bg-primary/5">
       <CardContent class="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
