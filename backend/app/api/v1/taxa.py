@@ -101,9 +101,6 @@ async def search_taxa(
             params["status"] = status
         where_sql = "WHERE " + " AND ".join(clauses) if clauses else ""
 
-        total_row = await db.execute(text(f"SELECT COUNT(*) AS n FROM taxa {where_sql}"), params)
-        total = total_row.scalar_one()
-
         rows = await db.execute(
             text(f"""
                 SELECT aphia_id, scientificname, authority, rank, status,
@@ -120,6 +117,7 @@ async def search_taxa(
             params,
         )
         items = [dict(r._mapping) for r in rows]
+        total = offset + len(items) + 1 if len(items) == limit else offset + len(items)
         response = TaxonSearchResponse(
             items=[TaxonRead.model_validate(i) for i in items],
             total=total,
