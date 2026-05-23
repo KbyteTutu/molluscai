@@ -254,15 +254,14 @@ async function submitCorrection() {
           <Badge v-if="taxon.status" :variant="taxon.status === 'accepted' ? 'default' : 'muted'" class="text-[10px] uppercase tracking-wider">{{ taxon.status }}</Badge>
           <Badge v-if="taxon.is_extinct" variant="muted" class="text-[10px] uppercase tracking-wider">† Extinct</Badge>
           <span class="text-xs font-mono text-muted-foreground">#{{ taxon.aphia_id }}</span>
-          <button
-            class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            @click="openCorrection"
-          >
-            <Pencil class="size-3.5" /> 纠错
-          </button>
-          <a v-if="taxon.url" :href="taxon.url" target="_blank" rel="noopener noreferrer" class="ml-auto">
-            <Button variant="default" size="sm"><ExternalLink class="size-3.5" /> 在 WoRMS 查看</Button>
-          </a>
+          <div class="ml-auto flex items-center gap-2">
+            <Button variant="outline" size="sm" @click="openCorrection">
+              <Pencil class="size-3.5" /> 信息纠错
+            </Button>
+            <a v-if="taxon.url" :href="taxon.url" target="_blank" rel="noopener noreferrer">
+              <Button variant="default" size="sm"><ExternalLink class="size-3.5" /> 在 WoRMS 查看</Button>
+            </a>
+          </div>
         </div>
         <div v-if="ancestors.length" class="flex items-center gap-1 flex-wrap text-xs text-muted-foreground pt-1">
           <template v-for="(a, idx) in ancestors" :key="a.ancestor_aphia_id">
@@ -410,7 +409,7 @@ async function submitCorrection() {
       <div class="bg-background rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
         <div class="p-6 space-y-4">
           <h2 class="text-lg font-semibold">信息纠错</h2>
-          <p class="text-sm text-muted-foreground">{{ taxon?.scientificname }}</p>
+          <p class="text-sm text-muted-foreground">发现 {{ taxon?.scientificname }} 的信息有误？请在此提交修正，管理员审核后将更新数据。</p>
 
           <div>
             <label class="text-sm font-medium mb-1.5 block">纠错字段</label>
