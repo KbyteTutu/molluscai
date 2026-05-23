@@ -1119,7 +1119,7 @@ docker compose exec -T postgres psql -U mollusc -d molluscai \
 
 ## 冈瓦纳词典中文俗名导入 (2026-05-23) ✅
 
-从 `data_import/ganvana.xlsx`（冈瓦纳英汉博物词典，131,892 行，覆盖全生物界）导入软体动物的中文俗名到 `taxa_vernaculars` 表，作为 `language_code='zh'` 的俗名记录。
+从 `data_import/ganvana.xlsx`（冈瓦纳英汉博物词典，131,892 行，覆盖全生物界）导入软体动物的中文俗名到 `taxa_vernaculars` 表，作为 `language_code='CHN'` 的俗名记录。
 
 ### 匹配策略
 
@@ -1138,7 +1138,7 @@ docker compose exec -T postgres psql -U mollusc -d molluscai \
 | 文件 | 改动 |
 |------|------|
 | `backend/scripts/import_ganvana_zh.py` | 新建：解析 xlsx → dict 查找 → 批量 UPSERT 到 `taxa_vernaculars` |
-| `frontend/src/views/TaxonDetailView.vue` | 新增 `sortedVernaculars` computed：`language_code='zh'` 的俗名排在最前面 |
+| `frontend/src/views/TaxonDetailView.vue` | 新增 `sortedVernaculars` computed：`language_code='CHN'` 的俗名排在最前面 |
 
 ### 维护
 
@@ -1147,7 +1147,7 @@ docker compose exec -T postgres psql -U mollusc -d molluscai \
 docker compose cp data_import/ganvana.xlsx backend:/app/data_import/ganvana.xlsx
 docker compose exec backend python -m scripts.import_ganvana_zh
 
-# 自定义修改：编辑 taxa_vernaculars 表（language_code='zh'），
+# 自定义修改：编辑 taxa_vernaculars 表（language_code='CHN'），
 # 清空重建时需先恢复备份的 zh 数据
 
 
@@ -1198,6 +1198,31 @@ docker compose exec backend python -m scripts.import_ganvana_zh
 | `frontend/src/views/AdminCorrectionsView.vue` | 新建管理员纠错审核页面 |
 | `frontend/src/router/index.js` | 修改：新增 /admin/corrections 路由 |
 | `frontend/src/components/layout/AppSidebar.vue` | 修改：新增纠错管理侧边栏项 |
+
+### 迭代 (2026-05-23)
+
+- **纠错字段调整**: 移除 `citation`/`data_source`/`url`，新增俗名纠错（`vernaculars`，置顶为第一选项），选择俗名后展示语言代码列表
+- **始终显示当前值**: 选定字段后立即展示原始值，空值显示 `(空)`
+- **纠错按钮放大**: 改为 `<Button variant="outline" size="sm">`「信息纠错」，与 WoRMS 按钮并排
+- **弹窗鼓励说明**: 「发现 XX 的信息有误？请在此提交修正，管理员审核后将更新数据。」
+
+
+## Footer 免责声明 (2026-05-23) ✅
+
+在 `AppShell.vue` 的 footer 区域添加内容来源免责声明及侵权联系邮箱：
+
+> 本站内容均由已授权资料、公开资料等渠道汇总而来，包括部分同好个人提供的信息。如有侵权情况，请邮件联系 [tukechao@gmail.com](mailto:tukechao@gmail.com)
+
+
+## Ganvana 繁→简转换 (2026-05-23) ✅
+
+导入脚本 `import_ganvana_zh.py` 在解析 xlsx 时自动将繁体中文转换为简体中文。
+
+- 新增依赖 `zhconv>=1.4`
+- `parse_xlsx()` 中 `zhconv.convert(chinese, 'zh-cn')` 自动转换
+- base 镜像已重建包含 zhconv
+
+示例：`軟體動物門` → `软体动物门`，`雙殼綱` → `双壳纲`，`臺灣蝸牛` → `台湾蜗牛`
 
 ## 访问地址
 
