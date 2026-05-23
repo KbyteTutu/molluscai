@@ -192,11 +192,6 @@ watch(isAuthenticated, async (next, prev) => {
       </Card>
     </section>
 
-    <div v-if="isAuthenticated && !hasSearched && !search.loading && !search.hasResults" class="flex flex-col items-center justify-center py-16 md:py-24 text-center">
-      <SnailLogo :size="96" class="text-muted-foreground/20 mb-6" />
-      <p class="text-lg text-muted-foreground max-w-md leading-relaxed">在下方搜索框输入学名、科名、产地等关键词，开始检索 {{ formatNumber(totalRecords) }} 条拍卖记录</p>
-    </div>
-
     <Card v-if="!isAuthenticated" class="border-primary/30 bg-primary/5">
       <CardContent class="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
         <Lock class="size-5 shrink-0 text-primary" />
@@ -266,6 +261,11 @@ watch(isAuthenticated, async (next, prev) => {
         </Collapsible>
       </CardContent>
     </Card>
+
+    <div v-if="isAuthenticated && !hasSearched && !search.loading && !search.hasResults" class="flex flex-col items-center justify-center py-12 md:py-16 text-center">
+      <SnailLogo :size="80" class="text-muted-foreground/20 mb-5" />
+      <p class="text-muted-foreground max-w-sm leading-relaxed">在上方搜索框输入学名、科名、产地等关键词，开始探索拍卖数据库</p>
+    </div>
 
     <section>
       <div v-if="isAuthenticated" class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
