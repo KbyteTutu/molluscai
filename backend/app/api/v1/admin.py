@@ -13,7 +13,7 @@ from app.models.user import User, RoleQuota, QueryLog
 from app.models.auction import Auction
 from app.models.feedback import Feedback
 from app.tasks.auction_scraper import scrape_incremental
-from app.tasks.embedding_job import embed_run, embed_cancel
+from app.tasks.embedding_job import embed_run, embed_cancel, auction_embed_run, auction_embed_cancel
 from app.tasks.image_downloader import download_sold_images
 from app.tasks.celery_app import celery_app
 from app.services.minio_client import get_minio
@@ -94,6 +94,26 @@ def cancel_embed(
     async_result = embed_cancel.delay()
     record_task(async_result.id, "taxa.embed_cancel", {})
     return TaskAck(task_id=async_result.id, task_name="taxa.embed_cancel")
+
+
+@router.post("/embed/auction/run", response_model=TaskAck)
+def run_auction_embed(
+    payload: EmbedRequest,
+    _: User = Depends(require_admin),
+):
+    async_result = auction_embed_run.delay(rebuild=payload.rebuild, limit=payload.limit)
+    record_task(async_result.id, "auction.embed_run",
+        {"rebuild": payload.rebuild, "limit": payload.limit})
+    return TaskAck(task_id=async_result.id, task_name="auction.embed_run")
+
+
+@router.post("/embed/auction/cancel", response_model=TaskAck)
+def cancel_auction_embed(
+    _: User = Depends(require_admin),
+):
+    async_result = auction_embed_cancel.delay()
+    record_task(async_result.id, "auction.embed_cancel", {})
+    return TaskAck(task_id=async_result.id, task_name="auction.embed_cancel")
 
 
 class ScraperStats(BaseModel):

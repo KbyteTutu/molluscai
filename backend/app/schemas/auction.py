@@ -20,6 +20,7 @@ class AuctionSearchRequest(BaseModel):
     seller: Optional[str] = None
     is_sold: Optional[bool] = None
     sort: Optional[str] = Field(default=None, pattern="^(relevance|end_date_desc|price_desc|price_asc|item_no_desc)$")
+    mode: Optional[str] = Field(default="lexical", pattern="^(lexical|vector|hybrid)$")
     offset: int = Field(default=0, ge=0, le=500)
     limit: int = Field(default=10, ge=1, le=50)
 

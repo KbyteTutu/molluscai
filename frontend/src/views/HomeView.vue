@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useSearchStore } from '@/stores/search'
 import { useAuthStore } from '@/stores/auth'
 import { auctionApi } from '@/api'
-import { Search, SlidersHorizontal, LayoutGrid, Rows3, ChevronDown, Lock } from 'lucide-vue-next'
+import { Search, SlidersHorizontal, LayoutGrid, Rows3, ChevronDown, Lock, Sparkles, Type } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import CardContent from '@/components/ui/CardContent.vue'
 import Input from '@/components/ui/Input.vue'
@@ -33,6 +33,7 @@ const router = useRouter()
 const isAuthenticated = computed(() => auth.isAuthenticated)
 
 const view = ref('cards')
+const mode = ref('lexical')
 const filtersOpen = ref(false)
 
 const anonItems = ref([])
@@ -71,7 +72,7 @@ const advancedFilterCount = computed(() => {
 })
 
 function buildPayload() {
-  const out = { offset: offset.value, limit: PAGE_SIZE, sort: filters.sort }
+  const out = { offset: offset.value, limit: PAGE_SIZE, sort: filters.sort, mode: mode.value }
   for (const [k, v] of Object.entries(filters)) {
     if (k === 'sort') continue
     if (k === 'is_sold') {
@@ -217,6 +218,26 @@ watch(isAuthenticated, async (next, prev) => {
               placeholder="拉丁学名、科、产地…"
               class="pl-9 h-10"
             />
+          </div>
+          <div class="inline-flex items-center rounded-md border bg-card p-0.5">
+            <button
+              type="button"
+              :class="['inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
+                mode === 'lexical' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground']"
+              @click="mode = 'lexical'; runSearch(true)"
+              title="词法模糊匹配 · 最快"
+            >
+              <Type class="size-3.5" /> 词法
+            </button>
+            <button
+              type="button"
+              :class="['inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
+                mode === 'hybrid' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground']"
+              @click="mode = 'hybrid'; runSearch(true)"
+              title="语义检索 · 词法+向量+重排序"
+            >
+              <Sparkles class="size-3.5" /> 智能
+            </button>
           </div>
           <div class="flex items-center gap-2">
             <Collapsible v-model:open="filtersOpen" class="flex-1 sm:flex-none">

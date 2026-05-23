@@ -24,3 +24,17 @@ def embed_cancel(self) -> dict:
     from scripts.embed_taxa import request_cancel
     request_cancel()
     return {"cancelled": True}
+
+
+@celery_app.task(name="auction.embed_run", bind=True)
+def auction_embed_run(self, rebuild: bool = False, limit: int | None = None) -> dict:
+    from scripts.embed_auctions import run
+    rc = asyncio.new_event_loop().run_until_complete(run(rebuild=rebuild, max_rows=limit))
+    return {"return_code": rc, "rebuild": rebuild, "limit": limit}
+
+
+@celery_app.task(name="auction.embed_cancel", bind=True)
+def auction_embed_cancel(self) -> dict:
+    from scripts.embed_auctions import request_cancel
+    request_cancel()
+    return {"cancelled": True}

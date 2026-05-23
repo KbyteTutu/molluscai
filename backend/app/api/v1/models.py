@@ -294,3 +294,38 @@ async def embeddings_status(
         "throughput_24h": dict(throughput_24h._mapping),
         "recent_errors": [dict(r._mapping) for r in recent_errors],
     }
+
+
+@router.get("/auction-embeddings/status")
+async def auction_embeddings_status(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    total_auctions = (await db.execute(text("SELECT COUNT(*) FROM auctions"))).scalar_one()
+
+    active_emb = (await db.execute(text("""
+        SELECT id, model_name, provider, model_id, base_url, price_input, price_unit
+        FROM model_configs WHERE purpose='embedding' AND is_active=true
+        ORDER BY id DESC LIMIT 1
+    """))).fetchone()
+
+    coverage_rows = (await db.execute(text("""
+        SELECT model_name, COUNT(*)::int AS embedded,
+               MAX(created_at) AS last_at,
+               MIN(created_at) AS first_at
+        FROM auction_embeddings
+        GROUP BY model_name
+        ORDER BY embedded DESC
+    """))).fetchall()
+
+    coverage = []
+    for r in coverage_rows:
+        m = dict(r._mapping)
+        m["pct"] = round((m["embedded"] / total_auctions) * 100, 2) if total_auctions else 0
+        coverage.append(m)
+
+    return {
+        "total_auctions": total_auctions,
+        "active_model": dict(active_emb._mapping) if active_emb else None,
+        "coverage": coverage,
+    }

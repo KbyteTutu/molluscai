@@ -18,17 +18,24 @@ import { formatNumber, cn } from '@/lib/utils'
 import { toast } from 'vue-sonner'
 
 const status = ref(null)
+const auctionStatus = ref(null)
 const loading = ref(false)
 const dispatching = ref(false)
 const cancelling = ref(false)
+const auctionDispatching = ref(false)
+const auctionCancelling = ref(false)
 const autoRefresh = ref(true)
 let pollTimer = null
 
 async function load() {
   loading.value = true
   try {
-    const { data } = await adminApi.embeddingsStatus()
-    status.value = data
+    const [taxaRes, auctionRes] = await Promise.all([
+      adminApi.embeddingsStatus(),
+      adminApi.auctionEmbeddingsStatus(),
+    ])
+    status.value = taxaRes.data
+    auctionStatus.value = auctionRes.data
   } catch (e) { toast.error(e.response?.data?.detail || '加载失败') }
   finally { loading.value = false }
 }
@@ -71,6 +78,30 @@ async function cancelEmbed() {
   finally { cancelling.value = false }
 }
 
+async function runAuctionEmbed(rebuild = false) {
+  if (rebuild && !confirm('确认对全部拍卖记录重新生成向量？旧向量将被丢弃，按当前 tokens 计价会产生费用。')) return
+  auctionDispatching.value = true
+  try {
+    const { data } = await adminApi.runAuctionEmbed({ rebuild })
+    toast.success(`拍卖嵌入任务已派发 · ${data.task_id.slice(0, 8)}…`, {
+      description: rebuild ? '全量重建运行中' : '增量嵌入运行中'
+    })
+    setTimeout(load, 1500)
+  } catch (e) { toast.error(e.response?.data?.detail || '派发失败') }
+  finally { auctionDispatching.value = false }
+}
+
+async function cancelAuctionEmbed() {
+  if (!confirm('确认停止拍卖嵌入任务？已完成的部分不会丢失。')) return
+  auctionCancelling.value = true
+  try {
+    await adminApi.cancelAuctionEmbed()
+    toast.success('已发送停止信号')
+    setTimeout(load, 2000)
+  } catch (e) { toast.error(e.response?.data?.detail || '取消失败') }
+  finally { auctionCancelling.value = false }
+}
+
 const mainCoverage = computed(() => {
   if (!status.value?.active_model || !status.value.coverage) return null
   return status.value.coverage.find(c => c.model_name === status.value.active_model.model_name)
@@ -85,6 +116,15 @@ const isBusy = computed(() => {
   if (!status.value) return false
   return (status.value.throughput_1h?.calls ?? 0) > 0 && pct.value < 100
 })
+
+const auctionMainCoverage = computed(() => {
+  if (!auctionStatus.value?.active_model || !auctionStatus.value.coverage) return null
+  return auctionStatus.value.coverage.find(c => c.model_name === auctionStatus.value.active_model.model_name)
+})
+const auctionPct = computed(() => auctionMainCoverage.value?.pct ?? 0)
+const auctionEmbedded = computed(() => auctionMainCoverage.value?.embedded ?? 0)
+const auctionTotal = computed(() => auctionStatus.value?.total_auctions ?? 0)
+const auctionRemaining = computed(() => Math.max(auctionTotal.value - auctionEmbedded.value, 0))
 
 const etaLabel = computed(() => {
   const t = status.value?.throughput_1h
@@ -110,7 +150,7 @@ onBeforeUnmount(stopPolling)
     <header class="flex items-end justify-between flex-wrap gap-3">
       <div class="space-y-1">
         <h1 class="font-serif text-3xl font-semibold tracking-tight">向量管理</h1>
-        <p class="text-sm text-muted-foreground">监控物种向量化进度、吞吐与错误 · 仅超级管理员可见</p>
+        <p class="text-sm text-muted-foreground">监控物种 / 拍卖向量化进度、吞吐与错误 · 仅超级管理员可见</p>
       </div>
       <div class="flex items-center gap-2">
         <label class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -225,6 +265,57 @@ onBeforeUnmount(stopPolling)
         </div>
       </Card>
     </section>
+
+    <!-- ── 拍卖记录嵌入 ── -->
+    <Separator />
+
+    <Card v-if="auctionStatus?.active_model">
+      <CardHeader>
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div class="space-y-1">
+            <CardTitle class="text-lg flex items-center gap-2">
+              <Database class="size-5" /> 拍卖记录嵌入
+            </CardTitle>
+            <CardDescription>
+              {{ auctionStatus.active_model.model_name }}
+              · {{ formatNumber(auctionTotal) }} 条拍卖记录
+            </CardDescription>
+          </div>
+          <div class="text-right">
+            <div class="font-serif text-3xl tabular-nums">{{ auctionPct.toFixed(1) }}<span class="text-lg text-muted-foreground">%</span></div>
+            <div class="text-xs text-muted-foreground">
+              {{ formatNumber(auctionEmbedded) }} / {{ formatNumber(auctionTotal) }}
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div class="h-2.5 bg-muted rounded-full overflow-hidden">
+          <div
+            class="h-full bg-primary transition-all duration-500"
+            :style="{ width: auctionPct + '%' }"
+          />
+        </div>
+        <div class="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+          <span>剩余 {{ formatNumber(auctionRemaining) }} 条</span>
+          <span v-if="auctionMainCoverage?.last_at">最后一条: {{ fmtTime(auctionMainCoverage.last_at) }}</span>
+        </div>
+      </CardContent>
+      <Separator />
+      <CardFooter class="gap-2 pt-6">
+        <Button size="sm" :disabled="auctionDispatching || auctionRemaining === 0" @click="runAuctionEmbed(false)">
+          <Zap class="size-4" />
+          {{ auctionRemaining === 0 ? '已全部嵌入' : `嵌入剩余 ${formatNumber(auctionRemaining)} 条` }}
+        </Button>
+        <Button size="sm" variant="destructive" :disabled="auctionDispatching" @click="runAuctionEmbed(true)">
+          全量重建
+        </Button>
+        <Button v-if="auctionCancelling || auctionDispatching" size="sm" variant="outline" :disabled="auctionCancelling" @click="cancelAuctionEmbed">
+          <Loader2 v-if="auctionCancelling" class="size-4 animate-spin" />
+          停止任务
+        </Button>
+      </CardFooter>
+    </Card>
 
     <section v-if="status?.coverage?.length > 1" class="space-y-3">
       <h2 class="font-serif text-xl">所有模型的向量覆盖</h2>

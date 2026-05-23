@@ -1,6 +1,7 @@
 from app.database import Base
 from app.models.user import User, RoleQuota
 from app.models.auction import Auction
+from app.models.auction_embedding import AuctionEmbedding
 from app.models.document import Document
 from app.models.chunk import TextChunk, ImageChunk
 from app.models.billing import BillingRecord, PricingRule
@@ -12,6 +13,7 @@ __all__ = [
     "User",
     "RoleQuota",
     "Auction",
+    "AuctionEmbedding",
     "Document",
     "TextChunk",
     "ImageChunk",

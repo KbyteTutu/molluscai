@@ -100,8 +100,11 @@ async def search(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_auction),
 ):
+    mode = (filters.mode or "lexical").lower()
+    query_type = QUERY_TYPE_AI if mode in ("vector", "hybrid") else QUERY_TYPE_AUCTION
+
     await check_quota(
-        db, current_user, QUERY_TYPE_AUCTION,
+        db, current_user, query_type,
         request=request,
         query_text=filters.model_dump_json(exclude_none=True),
     )
@@ -110,7 +113,9 @@ async def search(
     total: int = 0
     status_code = 200
     try:
-        items, total = await search_auctions(db, filters)
+        items, total = await search_auctions(
+            db, filters, mode=mode, user_id=current_user.id,
+        )
         return SearchResponse(items=items, total=total, offset=filters.offset, limit=filters.limit)
     except HTTPException as e:
         status_code = e.status_code
@@ -123,7 +128,7 @@ async def search(
             await log_query(
                 db,
                 user=current_user,
-                query_type=QUERY_TYPE_AUCTION,
+                query_type=query_type,
                 query_text=filters.model_dump_json(exclude_none=True),
                 result_count=total,
                 ip_address=get_client_ip(request),
