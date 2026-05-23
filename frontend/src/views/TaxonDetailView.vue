@@ -139,32 +139,32 @@ onMounted(load)
 const correctionOpen = ref(false)
 const correctionField = ref('')
 const correctionCustomField = ref('')
+const correctionVernacularIdx = ref(-1)
 const correctionCurrent = ref('')
 const correctionSuggested = ref('')
 const correctionNote = ref('')
 const correctionSubmitting = ref(false)
 
 const CORRECTION_FIELDS = [
-  { value: 'scientificname', label: '学名 scientificname' },
-  { value: 'authority', label: '命名人 authority' },
-  { value: 'status', label: '分类状态 status' },
-  { value: 'rank', label: '分类等级 rank' },
-  { value: 'kingdom', label: '界 kingdom' },
-  { value: 'phylum', label: '门 phylum' },
-  { value: 'class', label: '纲 class' },
-  { value: 'order', label: '目 order' },
-  { value: 'family', label: '科 family' },
-  { value: 'genus', label: '属 genus' },
-  { value: 'species_epithet', label: '种加词 species_epithet' },
-  { value: 'citation', label: '文献引用 citation' },
-  { value: 'data_source', label: '数据来源 data_source' },
-  { value: 'url', label: 'WoRMS 链接 url' },
+  { value: 'vernaculars', label: '俗名 Vernaculars' },
+  { value: 'scientificname', label: '学名 Scientific name' },
+  { value: 'authority', label: '命名人 Authority' },
+  { value: 'status', label: '分类状态 Status' },
+  { value: 'rank', label: '分类等级 Rank' },
+  { value: 'kingdom', label: '界 Kingdom' },
+  { value: 'phylum', label: '门 Phylum' },
+  { value: 'class', label: '纲 Class' },
+  { value: 'order', label: '目 Order' },
+  { value: 'family', label: '科 Family' },
+  { value: 'genus', label: '属 Genus' },
+  { value: 'species_epithet', label: '种加词 Species epithet' },
   { value: 'other', label: '其他字段' },
 ]
 
 function openCorrection() {
   correctionField.value = ''
   correctionCustomField.value = ''
+  correctionVernacularIdx.value = -1
   correctionCurrent.value = ''
   correctionSuggested.value = ''
   correctionNote.value = ''
@@ -174,15 +174,29 @@ function openCorrection() {
 function onSelectField(field) {
   correctionField.value = field
   correctionCustomField.value = ''
-  if (field === 'other') {
+  correctionVernacularIdx.value = -1
+  if (field === 'other' || field === 'vernaculars') {
     correctionCurrent.value = ''
   } else if (taxon.value) {
     correctionCurrent.value = taxon.value[field] || ''
   }
 }
 
+function onSelectVernacular(idx) {
+  correctionVernacularIdx.value = idx
+  const v = sortedVernaculars.value[idx]
+  if (v) {
+    correctionCurrent.value = v.vernacular
+  }
+}
+
 const effectiveFieldName = () => {
   if (correctionField.value === 'other') return correctionCustomField.value.trim()
+  if (correctionField.value === 'vernaculars') {
+    const v = sortedVernaculars.value[correctionVernacularIdx.value]
+    if (v) return `vernacular:${v.language_code}`
+    return ''
+  }
   return correctionField.value
 }
 
@@ -410,6 +424,22 @@ async function submitCorrection() {
             </select>
           </div>
 
+          <div v-if="correctionField === 'vernaculars'">
+            <label class="text-sm font-medium mb-1.5 block">选择俗名</label>
+            <select
+              v-model="correctionVernacularIdx"
+              @change="onSelectVernacular(correctionVernacularIdx)"
+              class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option :value="-1" disabled selected>请选择</option>
+              <option
+                v-for="(v, idx) in sortedVernaculars"
+                :key="idx"
+                :value="idx"
+              >{{ v.vernacular }} ({{ v.language_code }}{{ v.language ? ', ' + v.language : '' }})</option>
+            </select>
+          </div>
+
           <div v-if="correctionField === 'other'">
             <label class="text-sm font-medium mb-1.5 block">自定义字段名</label>
             <input
@@ -420,9 +450,9 @@ async function submitCorrection() {
             />
           </div>
 
-          <div v-if="correctionCurrent">
+          <div v-if="correctionField">
             <label class="text-sm font-medium mb-1.5 block">当前值</label>
-            <div class="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">{{ correctionCurrent }}</div>
+            <div class="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">{{ correctionCurrent || '(空)' }}</div>
           </div>
 
           <div>
