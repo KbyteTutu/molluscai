@@ -2,7 +2,12 @@
 Import Chinese rank names from fenlei.xlsx into taxon_name_zh table.
 
 Usage:
+  # Import directly into running DB (idempotent UPSERT):
   docker compose exec backend python -m scripts.import_taxon_zh
+
+  # Regenerate the static seed SQL file (for fresh deployments):
+  docker compose exec backend python -m scripts.import_taxon_zh --emit-sql \\
+      > infra/postgres/init/08-taxon-name-zh.sql
 """
 from __future__ import annotations
 
@@ -66,8 +71,32 @@ def parse_xlsx() -> list[tuple[str, str, str]]:
     return entries
 
 
+def _emit_sql(entries: list[tuple[str, str, str]]) -> None:
+    print("-- AUTO-GENERATED from data_import/fenlei.xlsx + SEED_ENTRIES")
+    print("-- Regenerate: python -m scripts.import_taxon_zh --emit-sql")
+    print()
+    print("CREATE TABLE IF NOT EXISTS taxon_name_zh (")
+    print("    latin_name   TEXT PRIMARY KEY,")
+    print("    chinese_name TEXT NOT NULL,")
+    print("    rank_type    TEXT NOT NULL")
+    print(");")
+    print()
+    print("CREATE INDEX IF NOT EXISTS idx_taxon_name_zh_rank ON taxon_name_zh (rank_type);")
+    print()
+    print("INSERT INTO taxon_name_zh (latin_name, chinese_name, rank_type) VALUES")
+    deduped: dict[str, tuple[str, str, str]] = {}
+    for entry in entries:
+        deduped[entry[0]] = entry
+    rows = sorted(deduped.values(), key=lambda e: (e[2], e[0]))
+    lines = [f"  ('{l.replace(chr(39), chr(39)*2)}', '{c.replace(chr(39), chr(39)*2)}', '{r}')" for l, c, r in rows]
+    print(",\n".join(lines))
+    print("ON CONFLICT (latin_name) DO NOTHING;")
+
+
 async def run() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
+    emit_sql_mode = "--emit-sql" in sys.argv
+    log_stream = sys.stderr if emit_sql_mode else sys.stdout
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", stream=log_stream)
 
     if not XLSX_PATH.exists():
         log.error("xlsx not found: %s", XLSX_PATH)
@@ -76,6 +105,10 @@ async def run() -> int:
     entries = parse_xlsx()
     entries.extend(SEED_ENTRIES)
     log.info("parsed %d entries from xlsx", len(entries))
+
+    if emit_sql_mode:
+        _emit_sql(entries)
+        return 0
 
     conn = await asyncpg.connect(settings.DATABASE_URL_SYNC)
     try:

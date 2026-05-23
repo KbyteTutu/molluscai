@@ -43,6 +43,8 @@ data_import/*.sqlite.gz
 data_import/*.sql
 data_import/*.sql.gz
 data_import/*.dump
+data_import/*.xlsx
+backend/data_import/
 
 # opencode/Sisyphus session state
 .omo/
