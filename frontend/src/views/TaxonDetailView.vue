@@ -64,8 +64,8 @@ async function load() {
   if (c) children.value = c.data
   if (cls) classification.value = cls.data
   if (x) externalIds.value = x.data
-  if (!Object.keys(zhNames.value).length) {
-    try { const r = await taxaApi.rankNamesZh(); zhNames.value = r.data } catch {}
+  if (taxon.value?.rank_names_zh && !Object.keys(zhNames.value).length) {
+    zhNames.value = taxon.value.rank_names_zh
   }
 }
 

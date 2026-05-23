@@ -42,7 +42,8 @@ class TaxonRead(BaseModel):
     url: Optional[str]
     data_source: str
     last_synced_at: Optional[datetime]
-    match_info: Optional[TaxonMatchInfo] = None
+    match_info: Optional["TaxonMatchInfo"] = None
+    rank_names_zh: dict[str, str] = Field(default_factory=dict)
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 
@@ -52,6 +53,7 @@ class TaxonSearchResponse(BaseModel):
     total: int
     offset: int
     limit: int
+    rank_names_zh: dict[str, str] = Field(default_factory=dict)
 
 
 class TaxonSynonym(BaseModel):

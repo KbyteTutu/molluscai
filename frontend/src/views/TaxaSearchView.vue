@@ -67,8 +67,8 @@ async function runSearch(reset = true) {
   } finally {
     loading.value = false
   }
-  if (!Object.keys(zhNames.value).length) {
-    try { const r = await taxaApi.rankNamesZh(); zhNames.value = r.data } catch {}
+  if (data.rank_names_zh && !Object.keys(zhNames.value).length) {
+    zhNames.value = data.rank_names_zh
   }
 }
 

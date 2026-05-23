@@ -10,6 +10,7 @@ from app.core.quota import (
     log_query,
 )
 from app.core.request_ip import get_client_ip
+from app.database import engine
 from app.models.user import User
 from app.schemas.taxon import (
     TaxonChild,
@@ -26,6 +27,18 @@ from app.services.taxa_search import hybrid_search, lexical_search
 router = APIRouter()
 
 SEARCHABLE_RANKS = ["Species", "Genus", "Family", "Order", "Class", "Phylum", "Kingdom"]
+
+_rank_names_zh: dict[str, str] | None = None
+
+
+async def _load_rank_names_zh() -> dict[str, str]:
+    global _rank_names_zh
+    if _rank_names_zh is not None:
+        return _rank_names_zh
+    async with engine.connect() as conn:
+        rows = await conn.execute(text("SELECT latin_name, chinese_name FROM taxon_name_zh"))
+        _rank_names_zh = {r[0]: r[1] for r in rows}
+    return _rank_names_zh
 
 
 @router.get("/search", response_model=TaxonSearchResponse)
@@ -60,6 +73,7 @@ async def search_taxa(
                 rank=rank, family=family, genus=genus, status=status,
                 offset=offset, limit=limit,
             )
+            response.rank_names_zh = await _load_rank_names_zh()
             return response
 
         if q and len(q.strip()) >= 2:
@@ -68,6 +82,7 @@ async def search_taxa(
                 rank=rank, family=family, genus=genus, status=status,
                 offset=offset, limit=limit,
             )
+            response.rank_names_zh = await _load_rank_names_zh()
             return response
 
         clauses: list[str] = []
@@ -110,6 +125,7 @@ async def search_taxa(
             total=total,
             offset=offset,
             limit=limit,
+            rank_names_zh=await _load_rank_names_zh(),
         )
         return response
     except HTTPException as e:
@@ -132,16 +148,11 @@ async def search_taxa(
 
 
 @router.get("/rank-names-zh")
-async def rank_names_zh(
-    db: AsyncSession = Depends(get_db),
-):
-    rows = await db.execute(
-        text("SELECT latin_name, chinese_name FROM taxon_name_zh"),
-    )
-    return {r[0]: r[1] for r in rows}
+async def rank_names_zh():
+    return await _load_rank_names_zh()
 
 
-@router.get("/{aphia_id}", response_model=TaxonRead)
+@router.get("/{aphia_id}")
 async def get_taxon(
     aphia_id: int,
     db: AsyncSession = Depends(get_db),
@@ -163,7 +174,9 @@ async def get_taxon(
     record = row.mappings().first()
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Taxon not found")
-    return TaxonRead.model_validate(dict(record))
+    data = dict(record)
+    data["rank_names_zh"] = await _load_rank_names_zh()
+    return data
 
 
 @router.get("/{aphia_id}/synonyms", response_model=list[TaxonSynonym])
