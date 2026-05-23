@@ -88,13 +88,15 @@ function clearFamily() {
       <Label>尺寸 / Size (mm)</Label>
       <div class="flex items-center gap-2">
         <Input
+          class="flex-1 min-w-0"
           type="number"
           :model-value="modelValue.size_min"
           placeholder="最小"
           @update:modelValue="update('size_min', $event === '' ? null : Number($event))"
         />
-        <span class="text-muted-foreground">—</span>
+        <span class="text-muted-foreground shrink-0">—</span>
         <Input
+          class="flex-1 min-w-0"
           type="number"
           :model-value="modelValue.size_max"
           placeholder="最大"
@@ -137,9 +139,9 @@ function clearFamily() {
     <div class="space-y-1.5">
       <Label>价格区间 / Price (€)</Label>
       <div class="flex items-center gap-2">
-        <Input type="number" :model-value="modelValue.price_min" placeholder="最低" @update:modelValue="update('price_min', $event === '' ? null : Number($event))" />
-        <span class="text-muted-foreground">—</span>
-        <Input type="number" :model-value="modelValue.price_max" placeholder="最高" @update:modelValue="update('price_max', $event === '' ? null : Number($event))" />
+        <Input class="flex-1 min-w-0" type="number" :model-value="modelValue.price_min" placeholder="最低" @update:modelValue="update('price_min', $event === '' ? null : Number($event))" />
+        <span class="text-muted-foreground shrink-0">—</span>
+        <Input class="flex-1 min-w-0" type="number" :model-value="modelValue.price_max" placeholder="最高" @update:modelValue="update('price_max', $event === '' ? null : Number($event))" />
       </div>
     </div>
     <div class="space-y-1.5">
