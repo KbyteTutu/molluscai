@@ -30,6 +30,11 @@ RANK_MAP = {
     7: "infraorder",
 }
 
+SEED_ENTRIES: list[tuple[str, str, str]] = [
+    ("Animalia", "动物界", "kingdom"),
+    ("Mollusca", "软体动物门", "phylum"),
+]
+
 
 def parse_xlsx() -> list[tuple[str, str, str]]:
     wb = openpyxl.load_workbook(str(XLSX_PATH))
@@ -69,6 +74,7 @@ async def run() -> int:
         return 1
 
     entries = parse_xlsx()
+    entries.extend(SEED_ENTRIES)
     log.info("parsed %d entries from xlsx", len(entries))
 
     conn = await asyncpg.connect(settings.DATABASE_URL_SYNC)
