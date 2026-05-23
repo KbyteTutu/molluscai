@@ -1,8 +1,9 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { LogOut } from 'lucide-vue-next'
+import { LogOut, Key } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
+import { authApi } from '@/api'
 import Card from '@/components/ui/Card.vue'
 import CardHeader from '@/components/ui/CardHeader.vue'
 import CardTitle from '@/components/ui/CardTitle.vue'
@@ -10,12 +11,17 @@ import CardContent from '@/components/ui/CardContent.vue'
 import Avatar from '@/components/ui/Avatar.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
+import Input from '@/components/ui/Input.vue'
 import Separator from '@/components/ui/Separator.vue'
 import { formatDate } from '@/lib/utils'
 import { toast } from 'vue-sonner'
 
 const authStore = useAuthStore()
 const router = useRouter()
+
+const oldPassword = ref('')
+const newPassword = ref('')
+const changing = ref(false)
 
 const roleLabel = {
   user: '普通用户',
@@ -36,6 +42,31 @@ function logout() {
   authStore.logout()
   toast.success('已退出登录')
   router.push('/login')
+}
+
+async function changePassword() {
+  if (!oldPassword.value || !newPassword.value) {
+    toast.error('请填写旧密码和新密码')
+    return
+  }
+  if (newPassword.value.length < 8) {
+    toast.error('新密码至少 8 位')
+    return
+  }
+  changing.value = true
+  try {
+    await authApi.changePassword({
+      old_password: oldPassword.value,
+      new_password: newPassword.value,
+    })
+    toast.success('密码修改成功')
+    oldPassword.value = ''
+    newPassword.value = ''
+  } catch (e) {
+    toast.error(e.response?.data?.detail || '修改失败')
+  } finally {
+    changing.value = false
+  }
 }
 </script>
 
@@ -80,6 +111,30 @@ function logout() {
           </div>
         </dl>
       </CardContent>
+    </Card>
+
+    <Card>
+      <form @submit.prevent="changePassword" class="p-6 space-y-4">
+        <div class="flex items-center gap-2 mb-2">
+          <Key class="size-4 text-muted-foreground" />
+          <span class="text-sm font-medium">修改密码</span>
+        </div>
+        <Input
+          v-model="oldPassword"
+          type="password"
+          placeholder="当前密码"
+          class="h-10"
+        />
+        <Input
+          v-model="newPassword"
+          type="password"
+          placeholder="新密码（至少 8 位）"
+          class="h-10"
+        />
+        <Button type="submit" :disabled="changing" class="w-full">
+          {{ changing ? '修改中…' : '确认修改' }}
+        </Button>
+      </form>
     </Card>
 
     <div>

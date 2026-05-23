@@ -5,6 +5,7 @@ from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.schemas.user import (
     AuthResponse,
+    PasswordChange,
     RefreshRequest,
     TokenResponse,
     UserCreate,
@@ -13,6 +14,7 @@ from app.schemas.user import (
 )
 from app.services.auth_service import (
     authenticate_user,
+    change_password,
     refresh_access_token,
     register_user,
 )
@@ -68,3 +70,19 @@ async def get_me(
     current_user: User = Depends(get_current_user),
 ):
     return current_user
+
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+async def change_user_password(
+    payload: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        await change_password(db, current_user, payload)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    return {"detail": "Password changed successfully"}

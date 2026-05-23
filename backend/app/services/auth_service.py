@@ -12,7 +12,7 @@ from app.core.security import (
     verify_token,
 )
 from app.models.user import User
-from app.schemas.user import AuthResponse, TokenResponse, UserCreate, UserRead
+from app.schemas.user import AuthResponse, PasswordChange, TokenResponse, UserCreate, UserRead
 
 
 def _build_auth_response(user: User) -> AuthResponse:
@@ -88,3 +88,12 @@ async def refresh_access_token(
         access_token=new_access_token,
         refresh_token=new_refresh_token,
     )
+
+
+async def change_password(
+    db: AsyncSession, user: User, payload: PasswordChange
+) -> None:
+    if not verify_password(payload.old_password, user.password_hash):
+        raise ValueError("Current password is incorrect")
+    user.password_hash = hash_password(payload.new_password)
+    await db.flush()

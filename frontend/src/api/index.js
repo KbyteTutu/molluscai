@@ -85,7 +85,8 @@ export const authApi = {
   login: (data) => apiClient.post('/auth/login', data),
   register: (data) => apiClient.post('/auth/register', data),
   refresh: (data) => apiClient.post('/auth/refresh', data),
-  me: () => apiClient.get('/auth/me')
+  me: () => apiClient.get('/auth/me'),
+  changePassword: (data) => apiClient.post('/auth/change-password', data),
 }
 
 export const auctionApi = {
