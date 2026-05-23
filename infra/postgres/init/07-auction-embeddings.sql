@@ -9,9 +9,7 @@
 -- text_hash lets us skip re-embedding rows whose composite text is unchanged.
 -- ============================================================
 
-DROP TABLE IF EXISTS auction_embeddings;
-
-CREATE TABLE auction_embeddings (
+CREATE TABLE IF NOT EXISTS auction_embeddings (
     item_no      INTEGER NOT NULL REFERENCES auctions(item_no) ON DELETE CASCADE,
     model_name   TEXT NOT NULL,
     dim          INTEGER NOT NULL,
@@ -21,9 +19,9 @@ CREATE TABLE auction_embeddings (
     PRIMARY KEY (item_no, model_name)
 );
 
-CREATE INDEX idx_auction_emb_model ON auction_embeddings (model_name);
+CREATE INDEX IF NOT EXISTS idx_auction_emb_model ON auction_embeddings (model_name);
 
-CREATE INDEX idx_auction_emb_hnsw
+CREATE INDEX IF NOT EXISTS idx_auction_emb_hnsw
     ON auction_embeddings
     USING hnsw (embedding halfvec_cosine_ops)
     WITH (m = 16, ef_construction = 64);

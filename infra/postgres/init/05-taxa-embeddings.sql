@@ -9,9 +9,7 @@
 -- text_hash lets us skip re-embedding rows whose composite text is unchanged.
 -- ============================================================
 
-DROP TABLE IF EXISTS taxa_embeddings;
-
-CREATE TABLE taxa_embeddings (
+CREATE TABLE IF NOT EXISTS taxa_embeddings (
     aphia_id     INTEGER NOT NULL REFERENCES taxa(aphia_id) ON DELETE CASCADE,
     model_name   TEXT NOT NULL,
     dim          INTEGER NOT NULL,
@@ -21,9 +19,9 @@ CREATE TABLE taxa_embeddings (
     PRIMARY KEY (aphia_id, model_name)
 );
 
-CREATE INDEX idx_taxa_emb_model ON taxa_embeddings (model_name);
+CREATE INDEX IF NOT EXISTS idx_taxa_emb_model ON taxa_embeddings (model_name);
 
-CREATE INDEX idx_taxa_emb_hnsw
+CREATE INDEX IF NOT EXISTS idx_taxa_emb_hnsw
     ON taxa_embeddings
     USING hnsw (embedding halfvec_cosine_ops)
     WITH (m = 16, ef_construction = 64);
