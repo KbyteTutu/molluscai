@@ -59,16 +59,71 @@ def _build_conditions(filters: AuctionSearchRequest) -> list:
         conditions.append(Auction.final_price >= filters.price_min)
     if filters.price_max is not None:
         conditions.append(Auction.final_price <= filters.price_max)
+    if filters.is_sold is not None:
+        conditions.append(Auction.is_sold == filters.is_sold)
+    if filters.seller:
+        conditions.append(Auction.seller.ilike(f"%{filters.seller}%"))
     if filters.end_date_from:
         conditions.append(Auction.end_date >= filters.end_date_from)
     if filters.end_date_to:
         conditions.append(Auction.end_date <= filters.end_date_to)
-    if filters.seller:
-        conditions.append(Auction.seller.ilike(f"%{filters.seller}%"))
-    if filters.is_sold is not None:
-        conditions.append(Auction.is_sold == filters.is_sold)
 
     return conditions
+
+
+def _build_condition_text(filters: AuctionSearchRequest) -> tuple[str, dict]:
+    clauses = []
+    params: dict = {}
+
+    if filters.name:
+        clauses.append("similarity(a.name, :name) > 0.1")
+        params["name"] = filters.name
+    if filters.family:
+        clauses.append("a.family ILIKE :family")
+        params["family"] = f"%{filters.family}%"
+    if filters.locality:
+        clauses.append("similarity(a.locality, :locality) > 0.1")
+        params["locality"] = filters.locality
+    if filters.size:
+        clauses.append("a.size ILIKE :size")
+        params["size"] = f"%{filters.size}%"
+    if filters.size_min is not None or filters.size_max is not None or filters.has_no_size:
+        size_expr = (
+            "CASE WHEN a.size ~ '^\\d' "
+            "THEN CAST(regexp_replace(a.size, '^(\\d+(?:\\.\\d+)?).*', '\\1') AS numeric) "
+            "ELSE NULL END"
+        )
+        if filters.has_no_size:
+            clauses.append(f"COALESCE({size_expr}, -1) = -1")
+        else:
+            clauses.append(f"{size_expr} IS NOT NULL")
+            if filters.size_min is not None:
+                clauses.append(f"{size_expr} >= :size_min")
+                params["size_min"] = filters.size_min
+            if filters.size_max is not None:
+                clauses.append(f"{size_expr} <= :size_max")
+                params["size_max"] = filters.size_max
+    if filters.price_min is not None:
+        clauses.append("a.final_price >= :price_min")
+        params["price_min"] = filters.price_min
+    if filters.price_max is not None:
+        clauses.append("a.final_price <= :price_max")
+        params["price_max"] = filters.price_max
+    if filters.is_sold is not None:
+        clauses.append("a.is_sold = :is_sold")
+        params["is_sold"] = filters.is_sold
+    if filters.seller:
+        clauses.append("a.seller ILIKE :seller")
+        params["seller"] = f"%{filters.seller}%"
+    if filters.end_date_from:
+        clauses.append("a.end_date >= :end_date_from")
+        params["end_date_from"] = filters.end_date_from
+    if filters.end_date_to:
+        clauses.append("a.end_date <= :end_date_to")
+        params["end_date_to"] = filters.end_date_to
+
+    where = " AND ".join(clauses) if clauses else "TRUE"
+    return where, params
 
 
 def _sort_columns(filters: AuctionSearchRequest) -> list:
@@ -85,12 +140,10 @@ def _sort_columns(filters: AuctionSearchRequest) -> list:
     return sort_map.get(filters.sort or "relevance", sort_map["end_date_desc"])
 
 
-async def _filtered_item_nos(db: AsyncSession, conditions: list) -> list[int]:
-    stmt = select(Auction.item_no)
-    if conditions:
-        stmt = stmt.where(*conditions)
-    rows = await db.execute(stmt)
-    return [r[0] for r in rows]
+def _sort_text(filters: AuctionSearchRequest) -> str:
+    if filters.name:
+        return f"similarity(a.name, :name) DESC, a.end_date DESC NULLS LAST"
+    return "a.end_date DESC NULLS LAST"
 
 
 async def _lexical_ids(
@@ -107,23 +160,19 @@ async def _lexical_ids(
 
 async def _vector_ids(
     db: AsyncSession, model_name: str, query_vec: list[float],
-    lex_ids: list[int],
+    filters: AuctionSearchRequest,
 ) -> List[int]:
     vec_literal = "[" + ",".join(f"{v:.6f}" for v in query_vec) + "]"
-    params: dict = {"model": model_name, "q": vec_literal, "lim": VECTOR_K}
-
-    if lex_ids:
-        id_list = "{" + ",".join(str(i) for i in lex_ids) + "}"
-        clause = "AND e.item_no = ANY(:ids)"
-        params["ids"] = id_list
-    else:
-        clause = ""
+    where, params = _build_condition_text(filters)
+    params["model"] = model_name
+    params["q"] = vec_literal
+    params["lim"] = VECTOR_K
 
     rows = await db.execute(
         text(f"""SELECT e.item_no
                  FROM auction_embeddings e
-                 WHERE e.model_name = :model
-                 {clause}
+                 JOIN auctions a ON a.item_no = e.item_no
+                 WHERE e.model_name = :model AND ({where})
                  ORDER BY e.embedding <=> CAST(:q AS halfvec)
                  LIMIT :lim"""),
         params,
@@ -148,18 +197,6 @@ def _rrf_fuse(lexical: list[int], vector: list[int], k: int = RRF_K) -> list[int
     for rank, item_no in enumerate(vector):
         scores[item_no] = scores.get(item_no, 0.0) + 1.0 / (k + rank + 1)
     return sorted(scores.keys(), key=lambda a: scores[a], reverse=True)
-
-
-async def _pick_active(db: AsyncSession, purpose: str) -> Optional[dict]:
-    row = (await db.execute(
-        text("""SELECT id, model_name, provider, api_key, base_url, model_id,
-                       price_input, price_unit
-                FROM model_configs
-                WHERE purpose = :p AND is_active = true
-                ORDER BY id DESC LIMIT 1"""),
-        {"p": purpose},
-    )).fetchone()
-    return dict(row._mapping) if row else None
 
 
 async def search_auctions(
@@ -190,8 +227,7 @@ async def search_auctions(
     qvec = pad_or_truncate(er.vectors[0], 2000)
 
     if mode == "vector":
-        filtered_ids = await _filtered_item_nos(db, conditions)
-        vec_ids = await _vector_ids(db, emb_cfg["model_name"], qvec, filtered_ids)
+        vec_ids = await _vector_ids(db, emb_cfg["model_name"], qvec, filters)
         items = await _load_by_item_nos(db, vec_ids)
         total = len(items)
         page = items[filters.offset: filters.offset + filters.limit]
@@ -199,30 +235,12 @@ async def search_auctions(
 
     # hybrid mode: RRF fuse lexical + vector
     lex_ids = await _lexical_ids(db, conditions, filters)
-    vec_ids = await _vector_ids(db, emb_cfg["model_name"], qvec, lex_ids)
+    vec_ids = await _vector_ids(db, emb_cfg["model_name"], qvec, filters)
     fused = _rrf_fuse(lex_ids, vec_ids)[:HYBRID_CANDIDATES]
     items = await _load_by_item_nos(db, fused)
     total = len(items)
     page = items[filters.offset: filters.offset + filters.limit]
     return page, total
-
-
-async def _lexical_search(
-    db: AsyncSession, conditions: list, filters: AuctionSearchRequest,
-) -> Tuple[List[Auction], int]:
-    base_query = select(Auction)
-    if conditions:
-        base_query = base_query.where(*conditions)
-
-    count_query = select(func.count()).select_from(base_query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar_one()
-
-    order_cols = _sort_columns(filters)
-    query = base_query.order_by(*order_cols).offset(filters.offset).limit(filters.limit)
-    result = await db.execute(query)
-    items = result.scalars().all()
-    return list(items), total
 
 
 async def get_auction_by_item_no(
@@ -232,3 +250,42 @@ async def get_auction_by_item_no(
         select(Auction).where(Auction.item_no == item_no)
     )
     return result.scalar_one_or_none()
+
+
+async def _lexical_search(
+    db: AsyncSession, conditions: list, filters: AuctionSearchRequest,
+) -> Tuple[List[Auction], int]:
+    base_query = select(Auction)
+    if conditions:
+        base_query = base_query.where(*conditions)
+
+    order_cols = _sort_columns(filters)
+    query = base_query.order_by(*order_cols).offset(filters.offset).limit(filters.limit)
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    total = filters.offset + len(items) + 1 if len(items) == filters.limit else filters.offset + len(items)
+
+    return items, total
+
+
+async def _pick_active(db: AsyncSession, purpose: str) -> Optional[dict]:
+    from app.models.model_config import ModelConfig
+    row = await db.execute(
+        select(
+            ModelConfig.id, ModelConfig.model_name, ModelConfig.provider,
+            ModelConfig.base_url, ModelConfig.api_key, ModelConfig.model_id,
+            ModelConfig.price_input, ModelConfig.price_unit,
+        ).where(
+            ModelConfig.purpose == purpose,
+            ModelConfig.is_active == True,
+        )
+    )
+    r = row.first()
+    if r is None:
+        return None
+    return {
+        "id": r[0], "model_name": r[1], "provider": r[2],
+        "base_url": r[3], "api_key": r[4], "model_id": r[5],
+        "price_input": r[6], "price_unit": r[7],
+    }
