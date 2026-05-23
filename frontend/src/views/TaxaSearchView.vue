@@ -102,7 +102,7 @@ onMounted(() => runSearch(true))
             <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input v-model="q" placeholder="学名、曾用名 或 各语言俗名，如 Conus、Loricata、chiton…" class="pl-9 h-10" />
           </div>
-          <div class="inline-flex items-center rounded-md border bg-card p-0.5 shrink-0">
+          <div class="inline-flex items-center rounded-md border bg-card p-0.5">
             <button
               type="button"
               :class="['inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
@@ -126,7 +126,7 @@ onMounted(() => runSearch(true))
             {{ loading ? '检索中…' : '检索' }}
           </Button>
         </form>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-sm">
           <label class="flex items-center gap-2">
             <span class="text-xs text-muted-foreground shrink-0 w-10">阶元</span>
             <select v-model="rank" @change="runSearch(true)" class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs">

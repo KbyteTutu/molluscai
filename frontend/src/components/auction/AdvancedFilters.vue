@@ -53,7 +53,7 @@ function clearFamily() {
 </script>
 
 <template>
-  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 p-[3px]">
+  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 p-[6px]">
     <!-- Family autocomplete -->
     <div class="space-y-1.5 relative">
       <Label for="f-family">科 / Family</Label>
