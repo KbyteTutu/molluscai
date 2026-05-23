@@ -267,7 +267,7 @@ watch(isAuthenticated, async (next, prev) => {
       <p class="text-muted-foreground max-w-sm leading-relaxed">在上方搜索框输入学名、科名、产地等关键词，开始探索拍卖数据库</p>
     </div>
 
-    <section>
+    <section v-if="hasSearched || search.loading">
       <div v-if="isAuthenticated" class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
         <div>
           <h2 class="font-serif text-xl">检索结果</h2>
