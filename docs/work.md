@@ -1117,6 +1117,42 @@ docker compose exec -T postgres psql -U mollusc -d molluscai \
 
 ---
 
+## 冈瓦纳词典中文俗名导入 (2026-05-23) ✅
+
+从 `data_import/ganvana.xlsx`（冈瓦纳英汉博物词典，131,892 行，覆盖全生物界）导入软体动物的中文俗名到 `taxa_vernaculars` 表，作为 `language_code='zh'` 的俗名记录。
+
+### 匹配策略
+
+对每个 taxon，取 `scientificname` 的前 1-2 个单词（如 `Conus gloriamaris` → `conus gloriamaris`），在 ganvana 的 `{latin_key: chinese_name}` 字典中查找。写入时合并：仅保留第一个匹配的中文名（`key_of(scientificname)` → ganvana dict）。
+
+**为什么不用反向匹配（从 ganvana 行出发）**：ganvana 有 131k 条记录，其中大量 1-word 条目（属级、纲级），如果以 ganvana 为驱动，"Conus" 会匹配 DB 中所有 ~6000 个 Conus 物种，产生数千万次 INSERT，超时不可行。改为以 taxa 驱动，每个 taxon 最多 1 个中文名，315k 次 O(1) dict 查找。
+
+### 结果
+
+- 解析 ganvana：**111,939** 个唯一 key（含 1-word 和 2-word）
+- 匹配成功：**27,700** 个 taxa（覆盖率 8.8%）
+- 原来 WoRMS 提供的 zh 俗名仅 144 条（多为 pinyin），替换为 27,700 条自然中文名
+
+### 涉及文件
+
+| 文件 | 改动 |
+|------|------|
+| `backend/scripts/import_ganvana_zh.py` | 新建：解析 xlsx → dict 查找 → 批量 UPSERT 到 `taxa_vernaculars` |
+| `frontend/src/views/TaxonDetailView.vue` | 新增 `sortedVernaculars` computed：`language_code='zh'` 的俗名排在最前面 |
+
+### 维护
+
+```bash
+# 导入（完全替换已有 zh 俗名）：
+docker compose cp data_import/ganvana.xlsx backend:/app/data_import/ganvana.xlsx
+docker compose exec backend python -m scripts.import_ganvana_zh
+
+# 自定义修改：编辑 taxa_vernaculars 表（language_code='zh'），
+# 下次重新导入会被覆盖。
+```
+
+---
+
 ## 运行命令
 
 ```bash
