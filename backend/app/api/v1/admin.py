@@ -11,7 +11,9 @@ from app.api.v1.feedback import ALLOWED_CATEGORIES
 from app.database import get_db
 from app.models.user import User, RoleQuota, QueryLog
 from app.models.auction import Auction
+from app.models.correction import Correction
 from app.models.feedback import Feedback
+from app.schemas.correction import AdminCorrectionOut, AdminCorrectionListOut, CorrectionAdminUpdate
 from app.tasks.auction_scraper import scrape_incremental
 from app.tasks.embedding_job import embed_run, embed_cancel, auction_embed_run, auction_embed_cancel
 from app.tasks.image_downloader import download_sold_images
@@ -730,3 +732,111 @@ async def update_feedback(
         user = user_row.scalar_one_or_none()
 
     return _serialize_admin_feedback(fb, user)
+
+
+# ---------------------------------------------------------------------------
+# Corrections admin
+# ---------------------------------------------------------------------------
+
+ALLOWED_CORRECTION_STATUSES = {"pending", "approved", "rejected"}
+
+
+def _serialize_admin_correction(corr: Correction, u: Optional[User]) -> AdminCorrectionOut:
+    return AdminCorrectionOut(
+        id=corr.id,
+        user_id=str(corr.user_id) if corr.user_id else "",
+        username=u.username if u else None,
+        email=u.email if u else None,
+        target_type=corr.target_type,
+        target_id=corr.target_id,
+        target_title=corr.target_title,
+        field_name=corr.field_name,
+        current_value=corr.current_value,
+        suggested_value=corr.suggested_value,
+        note=corr.note,
+        status=corr.status,
+        admin_note=corr.admin_note,
+        created_at=corr.created_at.isoformat() if corr.created_at else "",
+        updated_at=corr.updated_at.isoformat() if corr.updated_at else "",
+    )
+
+
+@router.get("/corrections", response_model=AdminCorrectionListOut)
+async def list_corrections(
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    target_type: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    base = select(Correction)
+    count_base = select(func.count(Correction.id))
+
+    if status_filter:
+        base = base.where(Correction.status == status_filter)
+        count_base = count_base.where(Correction.status == status_filter)
+    if target_type:
+        base = base.where(Correction.target_type == target_type)
+        count_base = count_base.where(Correction.target_type == target_type)
+
+    total = (await db.execute(count_base)).scalar_one()
+    base = base.order_by(Correction.created_at.desc()).limit(limit).offset(offset)
+    rows = (await db.execute(base)).scalars().all()
+
+    user_ids = {c.user_id for c in rows}
+    user_map = {}
+    if user_ids:
+        user_rows = (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars().all()
+        user_map = {u.id: u for u in user_rows}
+
+    return AdminCorrectionListOut(
+        items=[_serialize_admin_correction(c, user_map.get(c.user_id)) for c in rows],
+        total=int(total),
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.patch("/corrections/{correction_id}", response_model=AdminCorrectionOut)
+async def update_correction(
+    correction_id: int,
+    payload: CorrectionAdminUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    locked = await db.execute(
+        select(Correction)
+        .where(Correction.id == correction_id)
+        .with_for_update()
+    )
+    corr = locked.scalar_one_or_none()
+    if corr is None:
+        raise HTTPException(status_code=404, detail="Correction not found")
+
+    fields = payload.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    if "status" in fields:
+        new_status = fields["status"]
+        if new_status not in ALLOWED_CORRECTION_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status. Allowed: {', '.join(sorted(ALLOWED_CORRECTION_STATUSES))}",
+            )
+        corr.status = new_status
+
+    if "admin_note" in fields:
+        corr.admin_note = fields["admin_note"]
+
+    corr.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(corr)
+
+    user = None
+    if corr.user_id:
+        user_row = await db.execute(select(User).where(User.id == corr.user_id))
+        user = user_row.scalar_one_or_none()
+
+    return _serialize_admin_correction(corr, user)

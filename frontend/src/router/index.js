@@ -97,6 +97,12 @@ const routes = [
     name: 'AdminFeedbacks',
     component: () => import('@/views/AdminFeedbacksView.vue'),
     meta: { requiresAuth: true, requiresSuperadmin: true }
+  },
+  {
+    path: '/admin/corrections',
+    name: 'AdminCorrections',
+    component: () => import('@/views/AdminCorrectionsView.vue'),
+    meta: { requiresAuth: true, requiresSuperadmin: true }
   }
 ]
 

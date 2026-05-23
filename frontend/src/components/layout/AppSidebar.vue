@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Search, BookOpen, MessageCircle, Database, LogOut, User as UserIcon, ChevronRight, Dna, Cpu, Activity, Boxes, ListTodo, Gauge, ScrollText, Users, MessageSquareHeart } from 'lucide-vue-next'
+import { Search, BookOpen, MessageCircle, Database, LogOut, User as UserIcon, ChevronRight, Dna, Cpu, Activity, Boxes, ListTodo, Gauge, ScrollText, Users, MessageSquareHeart, Pencil } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
 import FeedbackTrigger from '@/components/layout/FeedbackTrigger.vue'
@@ -81,7 +81,8 @@ const sections = computed(() => [
           { name: '配额管理', to: '/admin/quotas', icon: Gauge, enabled: true },
           { name: '查询日志', to: '/admin/queries', icon: ScrollText, enabled: true },
           { name: '用户管理', to: '/admin/users', icon: Users, enabled: true },
-          { name: '用户反馈', to: '/admin/feedbacks', icon: MessageSquareHeart, enabled: true }
+          { name: '用户反馈', to: '/admin/feedbacks', icon: MessageSquareHeart, enabled: true },
+          { name: '纠错管理', to: '/admin/corrections', icon: Pencil, enabled: true }
         ]
       }]
     : [])

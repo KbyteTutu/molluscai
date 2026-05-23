@@ -137,7 +137,9 @@ export const adminApi = {
   updateUser: (id, data) => apiClient.patch(`/admin/users/${id}`, data),
   resetUserPassword: (id, newPassword) => apiClient.post(`/admin/users/${id}/reset-password`, { new_password: newPassword }),
   listFeedbacks: (params) => apiClient.get('/admin/feedbacks', { params }),
-  updateFeedback: (id, data) => apiClient.patch(`/admin/feedbacks/${id}`, data)
+  updateFeedback: (id, data) => apiClient.patch(`/admin/feedbacks/${id}`, data),
+  listCorrections: (params) => apiClient.get('/admin/corrections', { params }),
+  updateCorrection: (id, data) => apiClient.patch(`/admin/corrections/${id}`, data)
 }
 
 export const userApi = {
@@ -147,6 +149,11 @@ export const userApi = {
 export const feedbackApi = {
   create: (data) => apiClient.post('/feedback', data),
   mine: (params) => apiClient.get('/feedback/me', { params })
+}
+
+export const correctionApi = {
+  create: (data) => apiClient.post('/corrections', data),
+  mine: (params) => apiClient.get('/corrections/me', { params })
 }
 
 export default apiClient

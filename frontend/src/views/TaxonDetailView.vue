@@ -1,8 +1,8 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { taxaApi } from '@/api'
-import { ArrowLeft, ExternalLink, History, Languages, Map, GitBranch, Network } from 'lucide-vue-next'
+import { taxaApi, correctionApi } from '@/api'
+import { ArrowLeft, ExternalLink, History, Languages, Map, GitBranch, Network, Pencil } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
@@ -12,6 +12,8 @@ import AlertTitle from '@/components/ui/AlertTitle.vue'
 import AlertDescription from '@/components/ui/AlertDescription.vue'
 import Separator from '@/components/ui/Separator.vue'
 import TaxonName from '@/components/common/TaxonName.vue'
+
+import { toast } from 'vue-sonner'
 
 const route = useRoute()
 const router = useRouter()
@@ -133,6 +135,79 @@ const sortedVernaculars = computed(() => {
 
 watch(() => route.params.aphiaId, () => { if (route.params.aphiaId) load() })
 onMounted(load)
+
+const correctionOpen = ref(false)
+const correctionField = ref('')
+const correctionCustomField = ref('')
+const correctionCurrent = ref('')
+const correctionSuggested = ref('')
+const correctionNote = ref('')
+const correctionSubmitting = ref(false)
+
+const CORRECTION_FIELDS = [
+  { value: 'scientificname', label: '学名 scientificname' },
+  { value: 'authority', label: '命名人 authority' },
+  { value: 'status', label: '分类状态 status' },
+  { value: 'rank', label: '分类等级 rank' },
+  { value: 'kingdom', label: '界 kingdom' },
+  { value: 'phylum', label: '门 phylum' },
+  { value: 'class', label: '纲 class' },
+  { value: 'order', label: '目 order' },
+  { value: 'family', label: '科 family' },
+  { value: 'genus', label: '属 genus' },
+  { value: 'species_epithet', label: '种加词 species_epithet' },
+  { value: 'citation', label: '文献引用 citation' },
+  { value: 'data_source', label: '数据来源 data_source' },
+  { value: 'url', label: 'WoRMS 链接 url' },
+  { value: 'other', label: '其他字段' },
+]
+
+function openCorrection() {
+  correctionField.value = ''
+  correctionCustomField.value = ''
+  correctionCurrent.value = ''
+  correctionSuggested.value = ''
+  correctionNote.value = ''
+  correctionOpen.value = true
+}
+
+function onSelectField(field) {
+  correctionField.value = field
+  correctionCustomField.value = ''
+  if (field === 'other') {
+    correctionCurrent.value = ''
+  } else if (taxon.value) {
+    correctionCurrent.value = taxon.value[field] || ''
+  }
+}
+
+const effectiveFieldName = () => {
+  if (correctionField.value === 'other') return correctionCustomField.value.trim()
+  return correctionField.value
+}
+
+async function submitCorrection() {
+  const fname = effectiveFieldName()
+  if (!fname || !correctionSuggested.value.trim()) return
+  correctionSubmitting.value = true
+  try {
+    await correctionApi.create({
+      target_type: 'taxon',
+      target_id: String(taxon.value.aphia_id),
+      target_title: taxon.value.scientificname,
+      field_name: fname,
+      current_value: correctionCurrent.value || null,
+      suggested_value: correctionSuggested.value.trim(),
+      note: correctionNote.value.trim() || null,
+    })
+    toast.success('纠错已提交，等待管理员审核')
+    correctionOpen.value = false
+  } catch (e) {
+    toast.error(e.response?.data?.detail || '提交失败')
+  } finally {
+    correctionSubmitting.value = false
+  }
+}
 </script>
 
 <template>
@@ -165,6 +240,12 @@ onMounted(load)
           <Badge v-if="taxon.status" :variant="taxon.status === 'accepted' ? 'default' : 'muted'" class="text-[10px] uppercase tracking-wider">{{ taxon.status }}</Badge>
           <Badge v-if="taxon.is_extinct" variant="muted" class="text-[10px] uppercase tracking-wider">† Extinct</Badge>
           <span class="text-xs font-mono text-muted-foreground">#{{ taxon.aphia_id }}</span>
+          <button
+            class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            @click="openCorrection"
+          >
+            <Pencil class="size-3.5" /> 纠错
+          </button>
           <a v-if="taxon.url" :href="taxon.url" target="_blank" rel="noopener noreferrer" class="ml-auto">
             <Button variant="default" size="sm"><ExternalLink class="size-3.5" /> 在 WoRMS 查看</Button>
           </a>
@@ -309,4 +390,72 @@ onMounted(load)
       </p>
     </div>
   </div>
+
+  <Teleport to="body">
+    <div v-if="correctionOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="correctionOpen = false">
+      <div class="bg-background rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="p-6 space-y-4">
+          <h2 class="text-lg font-semibold">信息纠错</h2>
+          <p class="text-sm text-muted-foreground">{{ taxon?.scientificname }}</p>
+
+          <div>
+            <label class="text-sm font-medium mb-1.5 block">纠错字段</label>
+            <select
+              v-model="correctionField"
+              @change="onSelectField(correctionField)"
+              class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="" disabled selected>请选择字段</option>
+              <option v-for="f in CORRECTION_FIELDS" :key="f.value" :value="f.value">{{ f.label }}</option>
+            </select>
+          </div>
+
+          <div v-if="correctionField === 'other'">
+            <label class="text-sm font-medium mb-1.5 block">自定义字段名</label>
+            <input
+              v-model="correctionCustomField"
+              type="text"
+              class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="请输入字段名称"
+            />
+          </div>
+
+          <div v-if="correctionCurrent">
+            <label class="text-sm font-medium mb-1.5 block">当前值</label>
+            <div class="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">{{ correctionCurrent }}</div>
+          </div>
+
+          <div>
+            <label class="text-sm font-medium mb-1.5 block">建议值</label>
+            <textarea
+              v-model="correctionSuggested"
+              rows="3"
+              class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+              placeholder="请输入正确的信息"
+            />
+          </div>
+
+          <div>
+            <label class="text-sm font-medium mb-1.5 block">补充说明 <span class="text-muted-foreground font-normal">(选填)</span></label>
+            <textarea
+              v-model="correctionNote"
+              rows="2"
+              class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+              placeholder="可附上参考来源或理由"
+            />
+          </div>
+
+          <div class="flex gap-2 pt-2">
+            <Button variant="outline" class="flex-1" @click="correctionOpen = false">取消</Button>
+            <Button
+              class="flex-1"
+              :disabled="!correctionSuggested.trim() || !effectiveFieldName() || correctionSubmitting"
+              :loading="correctionSubmitting"
+              @click="submitCorrection"
+            >提交纠错</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>

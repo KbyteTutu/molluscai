@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.api.v1 import admin, auction, auth, feedback, models as models_api, taxa, users
+from app.api.v1 import admin, auction, auth, corrections, feedback, models as models_api, taxa, users
 from app.core.exceptions import register_exception_handlers
 
 
@@ -44,6 +44,7 @@ app.include_router(auction.router, prefix="/api/v1/auction", tags=["Auction"])
 app.include_router(taxa.router, prefix="/api/v1/taxa", tags=["Taxa"])
 app.include_router(models_api.router, prefix="/api/v1/admin/models", tags=["Admin"])
 app.include_router(feedback.router, prefix="/api/v1", tags=["Feedback"])
+app.include_router(corrections.router, prefix="/api/v1", tags=["Corrections"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 
 
