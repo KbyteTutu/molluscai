@@ -16,6 +16,7 @@ from pathlib import Path
 
 import asyncpg
 import openpyxl
+import zhconv
 
 from app.config import settings
 
@@ -33,7 +34,7 @@ def parse_xlsx() -> dict[str, str]:
         chinese, _, latin = row[1], row[2], row[3]
         if not chinese or not latin:
             continue
-        chinese = str(chinese).strip()
+        chinese = zhconv.convert(str(chinese).strip(), 'zh-cn')
         latin = str(latin).strip().lower()
         if not chinese or not latin:
             continue
