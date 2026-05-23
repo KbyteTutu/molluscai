@@ -61,9 +61,9 @@ async def run() -> int:
     pool = await asyncpg.create_pool(settings.DATABASE_URL_SYNC, min_size=2, max_size=4)
     try:
         async with pool.acquire() as conn:
-            await conn.execute("DELETE FROM taxa_vernaculars WHERE language_code = 'zh'")
+            await conn.execute("DELETE FROM taxa_vernaculars WHERE language_code = 'CHN'")
             total = await conn.fetchval("SELECT COUNT(*) FROM taxa")
-            log.info("cleared old zh vernaculars; %d taxa total", total)
+            log.info("cleared old CHN vernaculars; %d taxa total", total)
             offset = 0
             total_inserted = 0
             total_matched = 0
@@ -83,15 +83,15 @@ async def run() -> int:
                         total_matched += 1
                 if batch_entries:
                     await conn.executemany(
-                        "INSERT INTO taxa_vernaculars (aphia_id, vernacular, language_code) VALUES ($1, $2, 'zh') ON CONFLICT DO NOTHING",
+                        "INSERT INTO taxa_vernaculars (aphia_id, vernacular, language_code) VALUES ($1, $2, 'CHN') ON CONFLICT DO NOTHING",
                         batch_entries,
                     )
                     total_inserted += len(batch_entries)
                 offset += BATCH_SIZE
                 if offset % 50000 == 0:
                     log.info("progress: %d/%d  matched=%d inserted=%d", offset, total, total_matched, total_inserted)
-            count = await conn.fetchval("SELECT COUNT(*) FROM taxa_vernaculars WHERE language_code = 'zh'")
-            log.info("done. total zh vernaculars: %d  (matched %d taxa of %d)", count, total_matched, total)
+            count = await conn.fetchval("SELECT COUNT(*) FROM taxa_vernaculars WHERE language_code = 'CHN'")
+            log.info("done. total CHN vernaculars: %d  (matched %d taxa of %d)", count, total_matched, total)
     finally:
         await pool.close()
     return 0

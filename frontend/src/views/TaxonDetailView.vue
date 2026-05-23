@@ -121,10 +121,10 @@ const externalIdLink = (source, id) => {
 
 const sortedVernaculars = computed(() => {
   return [...vernaculars.value].sort((a, b) => {
-    const aZh = a.language_code === 'zh' || a.language_code?.startsWith('zh')
-    const bZh = b.language_code === 'zh' || b.language_code?.startsWith('zh')
-    if (aZh && !bZh) return -1
-    if (!aZh && bZh) return 1
+    const aChn = a.language_code === 'CHN'
+    const bChn = b.language_code === 'CHN'
+    if (aChn && !bChn) return -1
+    if (!aChn && bChn) return 1
     return 0
   })
 })
