@@ -1123,7 +1123,7 @@ docker compose exec -T postgres psql -U mollusc -d molluscai \
 
 ### 匹配策略
 
-对每个 taxon，取 `scientificname` 的前 1-2 个单词（如 `Conus gloriamaris` → `conus gloriamaris`），在 ganvana 的 `{latin_key: chinese_name}` 字典中查找。写入时合并：仅保留第一个匹配的中文名（`key_of(scientificname)` → ganvana dict）。
+对每个 taxon，取 `scientificname` 的前 1-2 个单词（如 `Conus gloriamaris` → `conus gloriamaris`），在 ganvana 的 `{latin_key: chinese_name}` 字典中查找。
 
 **为什么不用反向匹配（从 ganvana 行出发）**：ganvana 有 131k 条记录，其中大量 1-word 条目（属级、纲级），如果以 ganvana 为驱动，"Conus" 会匹配 DB 中所有 ~6000 个 Conus 物种，产生数千万次 INSERT，超时不可行。改为以 taxa 驱动，每个 taxon 最多 1 个中文名，315k 次 O(1) dict 查找。
 
@@ -1139,6 +1139,47 @@ docker compose exec -T postgres psql -U mollusc -d molluscai \
 |------|------|
 | `backend/scripts/import_ganvana_zh.py` | 新建：解析 xlsx → dict 查找 → 批量 UPSERT 到 `taxa_vernaculars` |
 | `frontend/src/views/TaxonDetailView.vue` | 新增 `sortedVernaculars` computed：`language_code='CHN'` 的俗名排在最前面 |
+
+---
+
+## ganvana 严格全名匹配 (2026-05-24) ✅
+
+### 问题
+
+旧逻辑仅取前 2 词生成匹配键（`" ".join(words[:2])`），导致种级中文名被贪婪应用到所有同属种的种下分类单元。例如 ganvana 中仅有 `"Helix pomatia"` → `"法国大蜗牛"` 的条目，但旧逻辑会让所有 29 个 `Helix pomatia var. xxx` 也错获 `"法国大蜗牛"`。
+
+### 修改（`backend/scripts/import_ganvana_zh.py`）
+
+**核心变化**：从「前 2 词截断」改为「清洗后全名精确匹配」。
+
+| 步骤 | 旧逻辑 | 新逻辑 |
+|------|--------|--------|
+| ganvana 建 key | `" ".join(latin.split()[:2])` | `clean_name(latin)` — 剥离作者/年份/亚属/化石标记 |
+| taxa 建 key | 同上 | `key_of(scientificname)` — 相同清洗，但 DB 无作者/年份，仅剥离亚属 |
+| 匹配 | `mapping.get(k)` | 不变（O(1) dict lookup） |
+
+`clean_name()` 处理：
+- 剥离括号内含 4 位数的作者年份：`(Gmelin, 1791)`、`(Linnaeus, 1758)`
+- 剥离尾随 "Author, Year" 无括号格式：`Sowerby, 1847`
+- 剥离亚属括号：`(Mesomphix)`、`(gena)` → `[A-Za-z][a-z]+`
+- 剥离化石标记：`(fossil)`、`(化石)`
+- 统一中文标点为 ASCII：`，→,` `（→(` `）→)`
+- 规范化空白、全转小写
+
+**匹配严格性验证**（以 `Helix pomatia` 为例）：
+
+| 入库 taxa | 旧 key | 新 key | 旧匹配 | 新匹配 |
+|-----------|--------|--------|--------|--------|
+| `Helix pomatia` (Species) | `helix pomatia` | `helix pomatia` | ✓ 法国大蜗牛 | ✓ 法国大蜗牛 |
+| `Helix pomatia var. banatica` | `helix pomatia` | `helix pomatia var. banatica` | ✗ 错获"法国大蜗牛" | ✓ 留空 |
+
+### 结果
+
+- 解析 ganvana：**116,981** 个唯一 key（较旧的 111,939 增加，因含 form 的条目不再被截断覆盖）
+- 匹配成功：**19,894** 个 taxa（覆盖率 6.3%，较旧的 27,700 / 8.8% 下降）
+  - 其中 Species：16,847
+  - 其中 Subspecies/Variety/Forma：1,671（仅当 ganvana 有对应种下条目时命中）
+- 匹配率下降是预期行为：严格的 7,800+ 条旧贪婪匹配被清除，宁缺毋滥
 
 ### 维护
 
