@@ -1161,6 +1161,7 @@ docker compose exec -T postgres psql -U mollusc -d molluscai \
 `clean_name()` 处理：
 - 剥离括号内含 4 位数的作者年份：`(Gmelin, 1791)`、`(Linnaeus, 1758)`
 - 剥离尾随 "Author, Year" 无括号格式：`Sowerby, 1847`
+- **剥离裸作者名（无括号无逗号无年份）**：`Conus figulinus Linnaeus` → `Conus figulinus`（基于命名惯例：属名大写、种加词/种下加词小写，故末尾大写词必为作者名）
 - 剥离亚属括号：`(Mesomphix)`、`(gena)` → `[A-Za-z][a-z]+`
 - 剥离化石标记：`(fossil)`、`(化石)`
 - 统一中文标点为 ASCII：`，→,` `（→(` `）→)`
@@ -1175,11 +1176,11 @@ docker compose exec -T postgres psql -U mollusc -d molluscai \
 
 ### 结果
 
-- 解析 ganvana：**116,981** 个唯一 key（较旧的 111,939 增加，因含 form 的条目不再被截断覆盖）
-- 匹配成功：**19,894** 个 taxa（覆盖率 6.3%，较旧的 27,700 / 8.8% 下降）
-  - 其中 Species：16,847
-  - 其中 Subspecies/Variety/Forma：1,671（仅当 ganvana 有对应种下条目时命中）
-- 匹配率下降是预期行为：严格的 7,800+ 条旧贪婪匹配被清除，宁缺毋滥
+- 解析 ganvana：**114,246** 个唯一 key（较旧的 111,939 增加，因含 form 的条目不再被截断覆盖；较上一版 116,981 略降，因裸作者名剥离后同名物种收敛）
+- 匹配成功：**21,753** 个 taxa（覆盖率 6.9%）
+  - 其中 Species：~18,500
+  - 其中 Subspecies/Variety/Forma：~1,700（仅当 ganvana 有对应种下条目时命中）
+- 匹配率较旧的 27,700 / 8.8% 下降是预期行为：~7,800 条旧贪婪匹配被清除，宁缺毋滥
 
 ### 维护
 
