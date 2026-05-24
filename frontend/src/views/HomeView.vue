@@ -278,7 +278,7 @@ watch(isAuthenticated, async (next, prev) => {
             <span class="hidden sm:inline">排序</span>
             <select
               v-model="filters.sort"
-              @change="runSearch(true)"
+              @change="hasSearched && runSearch(true)"
               class="h-8 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option v-for="opt in SORT_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
