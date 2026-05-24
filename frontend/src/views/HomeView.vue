@@ -222,7 +222,7 @@ watch(isAuthenticated, async (next, prev) => {
               type="button"
               :class="['inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
                 mode === 'lexical' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground']"
-              @click="mode = 'lexical'; runSearch(true)"
+              @click="mode = 'lexical'; (hasSearched || filters.name) && runSearch(true)"
               title="词法模糊匹配 · 最快"
             >
               <Type class="size-3.5" /> 词法
@@ -231,7 +231,7 @@ watch(isAuthenticated, async (next, prev) => {
               type="button"
               :class="['inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
                 mode === 'hybrid' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground']"
-              @click="mode = 'hybrid'; runSearch(true)"
+              @click="mode = 'hybrid'; (hasSearched || filters.name) && runSearch(true)"
               title="语义检索 · 词法+向量+重排序"
             >
               <Sparkles class="size-3.5" /> 智能
