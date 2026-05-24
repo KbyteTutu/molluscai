@@ -1224,6 +1224,54 @@ docker compose exec backend python -m scripts.import_ganvana_zh
 
 示例：`軟體動物門` → `软体动物门`，`雙殼綱` → `双壳纲`，`臺灣蝸牛` → `台湾蜗牛`
 
+## Celery 嵌入任务韧性改造 (2026-05-24) ✅
+
+修复 embedding 任务在 Celery worker 中被杀时 "Event loop is closed" 崩溃，新增自动重试、DB 持久化任务追踪与自动调度。
+
+### 问题
+
+1. `embedding_job.py` 使用 `asyncio.new_event_loop().run_until_complete()`，worker 中途杀掉时事件循环已关闭，任务永久丢失
+2. 无 Celery 重试机制 — 异常即失败
+3. `task_tracker.py` 的 Redis capped list（100 条）易失，重启即丢
+4. 无自动调度，需手动触发嵌入
+
+### 修复内容
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `backend/app/tasks/celery_app.py` | 修改 | 新增 `task_acks_late=True`、`task_reject_on_worker_lost=True`；beat_schedule 增加 `embed-taxa-hourly`（每 2 小时 :05）与 `embed-auctions-daily`（每 4 小时 :30），均 `rebuild=False` |
+| `backend/app/tasks/embedding_job.py` | 重写 | `embed_run` / `auction_embed_run` 改用 `asyncio.run()`（自动清理事件循环）；装饰器加 `bind=True, max_retries=5, default_retry_delay=120, acks_late=True, autoretry_for=(Exception,)`；异常时 `raise self.retry(exc=exc)`；取消任务保持原样 |
+| `backend/app/models/embedding_task.py` | 新建 | `EmbeddingTask` ORM 模型（`embedding_tasks` 表），字段：celery_task_id / task_type / state / rebuild / limit_rows / last_checkpoint_id / total_processed / total_count / error_message / created_at / updated_at / completed_at |
+| `backend/app/models/__init__.py` | 修改 | 导出 `EmbeddingTask` |
+| `backend/alembic/versions/0002_embedding_tasks.py` | 新建 | 迁移文件：建表 + `idx_embedding_tasks_celery_task_id` 索引；down_revision 指向 `0001_hourly_quotas` |
+| `backend/app/services/embedding_task_service.py` | 新建 | asyncpg 版 CRUD + checkpoint 服务：`create` / `update_state` / `save_checkpoint` / `get_checkpoint` / `get_latest_task` |
+| `backend/app/services/task_tracker.py` | 修改 | 新增 `record_embedding_task()`，使用 `asyncpg.connect(DATABASE_URL_SYNC)` + `asyncio.run()` 同步接口写入 DB |
+| `backend/app/api/v1/admin.py` | 修改 | `run_embed` 与 `run_auction_embed` 在 `record_task()` 后追加 `record_embedding_task()`；import 补 `record_embedding_task` |
+
+### 关键设计决策
+
+- **asyncpg 而非 SQLAlchemy async**：embed 脚本（`embed_taxa.py`、`embed_auctions.py`）已使用 asyncpg 直连，服务层保持同一风格，便于脚本后续集成 checkpoint
+- **asyncio.run() 替代 new_event_loop().run_until_complete()**：`asyncio.run()` 在协程结束后自动取消未完成任务、关闭循环，避免 worker 重启后残留关闭循环被复用
+- **acks_late + reject_on_worker_lost**：worker 进程被杀时任务回队列，由其他 worker 接管；配合 `max_retries=5` 实现自动重试
+- **DB 持久化 vs Redis**：Redis 列表保留（轻量任务列表展示），新增 `embedding_tasks` 表做持久化，支持 checkpoint 续跑
+
+### Embed 脚本改造 (Agent 2)
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `backend/scripts/embed_taxa.py` | 修改 | +SIGTERM/SIGINT 信号处理（收到 kill 信号后设置 `_cancel_event`，当前批次完成再退）; +`pick_batches(after_id=)` 支持 checkpoint 快速恢复; +`run(task_db_id=)` 集成 `EmbeddingTaskService` 保存/恢复进度; +最终状态更新 (completed/cancelled) |
+| `backend/scripts/embed_auctions.py` | 修改 | 同上，使用 `item_no` 替代 `aphia_id` |
+
+### 部署
+
+```bash
+docker compose exec backend alembic upgrade head
+./dev restart celery-worker
+./dev restart celery-beat
+```
+
+---
+
 ## 访问地址
 
 | 入口 | 地址 |

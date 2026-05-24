@@ -28,6 +28,8 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     broker_connection_retry=True,
     broker_connection_max_retries=None,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
     beat_schedule={
         "scrape-auctions-hourly": {
             "task": "auction.scrape_incremental",
@@ -38,6 +40,16 @@ celery_app.conf.update(
             "task": "auction.download_images",
             "schedule": crontab(minute="*/30"),
             "kwargs": {"batch_size": 50},
+        },
+        "embed-taxa-hourly": {
+            "task": "taxa.embed_run",
+            "schedule": crontab(minute=5, hour="*/2"),
+            "kwargs": {"rebuild": False},
+        },
+        "embed-auctions-daily": {
+            "task": "auction.embed_run",
+            "schedule": crontab(minute=30, hour="*/4"),
+            "kwargs": {"rebuild": False},
         },
     },
 )

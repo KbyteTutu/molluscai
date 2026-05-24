@@ -8,6 +8,7 @@ from app.models.billing import BillingRecord, PricingRule
 from app.models.model_config import ModelConfig, ModelUsageLog
 from app.models.correction import Correction
 from app.models.feedback import Feedback
+from app.models.embedding_task import EmbeddingTask
 
 __all__ = [
     "Base",
@@ -24,4 +25,5 @@ __all__ = [
     "ModelConfig",
     "ModelUsageLog",
     "Feedback",
+    "EmbeddingTask",
 ]

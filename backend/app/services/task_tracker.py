@@ -101,5 +101,20 @@ def _serialize_result(obj) -> dict:
     return {"value": str(obj)}
 
 
+def record_embedding_task(task_id: str, task_type: str, rebuild: bool, limit: int | None) -> int:
+    import asyncio
+    from app.services.embedding_task_service import EmbeddingTaskService
+
+    async def _create():
+        import asyncpg
+        conn = await asyncpg.connect(settings.DATABASE_URL_SYNC)
+        try:
+            return await EmbeddingTaskService.create(conn, task_id, task_type, rebuild, limit)
+        finally:
+            await conn.close()
+
+    return asyncio.run(_create())
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()

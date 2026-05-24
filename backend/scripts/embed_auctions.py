@@ -14,7 +14,7 @@ import logging
 import sys
 import time
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 import asyncpg
 
@@ -24,6 +24,17 @@ from app.services.llm_providers import (
     pad_or_truncate,
     text_hash,
 )
+
+import signal
+
+has_service = False
+EmbeddingTaskService: Any = None
+try:
+    from app.services.embedding_task_service import EmbeddingTaskService as _EmbeddingTaskService
+    EmbeddingTaskService = _EmbeddingTaskService  # type: ignore[reportConstantRedefinition]
+    has_service = True
+except ImportError:
+    pass
 
 log = logging.getLogger("embed_auctions")
 
@@ -65,16 +76,27 @@ async def pick_active_embedding_config(conn: asyncpg.Connection) -> Optional[dic
 
 
 async def pick_batches(conn: asyncpg.Connection, model_name: str,
-                       total_needed: int) -> list[list[dict]]:
-    rows = await conn.fetch(
-        """SELECT a.item_no, a.name, a.family, a.locality, a.size, a.note
-           FROM auctions a
-           LEFT JOIN auction_embeddings e
-             ON e.item_no = a.item_no AND e.model_name = $1
-           WHERE e.item_no IS NULL
-           ORDER BY a.item_no LIMIT $2""",
-        model_name, total_needed,
-    )
+                       total_needed: int, after_id: Optional[int] = None) -> list[list[dict]]:
+    if after_id is not None:
+        rows = await conn.fetch(
+            """SELECT a.item_no, a.name, a.family, a.locality, a.size, a.note
+               FROM auctions a
+               LEFT JOIN auction_embeddings e
+                 ON e.item_no = a.item_no AND e.model_name = $1
+               WHERE e.item_no IS NULL AND a.item_no > $3
+               ORDER BY a.item_no LIMIT $2""",
+            model_name, total_needed, after_id,
+        )
+    else:
+        rows = await conn.fetch(
+            """SELECT a.item_no, a.name, a.family, a.locality, a.size, a.note
+               FROM auctions a
+               LEFT JOIN auction_embeddings e
+                 ON e.item_no = a.item_no AND e.model_name = $1
+               WHERE e.item_no IS NULL
+               ORDER BY a.item_no LIMIT $2""",
+            model_name, total_needed,
+        )
     all_rows = [dict(r) for r in rows]
     return [all_rows[i:i + BATCH_SIZE] for i in range(0, len(all_rows), BATCH_SIZE)]
 
@@ -143,9 +165,32 @@ async def process_batch(conn: asyncpg.Connection, cfg: dict, rows: list[dict],
         return len(rows)
 
 
-async def run(rebuild: bool, max_rows: Optional[int]) -> int:
+async def run(rebuild: bool, max_rows: Optional[int], task_db_id: Optional[int] = None) -> int:
     global _cancel_event
     _cancel_event = asyncio.Event()
+
+    # --- graceful shutdown handler ---
+    _shutdown_requested = False
+
+    def _handle_signal(signum, frame):
+        nonlocal _shutdown_requested
+        if not _shutdown_requested:
+            _shutdown_requested = True
+            log.warning("Received signal %s, initiating graceful shutdown...", signum)
+            if _cancel_event:
+                _cancel_event.set()
+            _shutdown_requested = True
+
+    # Register handlers
+    loop = asyncio.get_running_loop()
+    try:
+        loop.add_signal_handler(signal.SIGTERM, lambda: _handle_signal(signal.SIGTERM, None))
+        loop.add_signal_handler(signal.SIGINT, lambda: _handle_signal(signal.SIGINT, None))
+    except NotImplementedError:
+        # Windows or non-main-thread — fall back to signal module
+        signal.signal(signal.SIGTERM, _handle_signal)
+        signal.signal(signal.SIGINT, _handle_signal)
+    # --- end graceful shutdown ---
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
     pool = await asyncpg.create_pool(settings.DATABASE_URL_SYNC, min_size=2, max_size=CONCURRENCY + 2)
@@ -168,9 +213,15 @@ async def run(rebuild: bool, max_rows: Optional[int]) -> int:
         started = time.perf_counter()
         fetch_size = BATCH_SIZE * CONCURRENCY * 2
 
+        checkpoint_id = None
+        if task_db_id is not None and has_service:
+            async with pool.acquire() as conn:
+                checkpoint_id, total_embedded = await EmbeddingTaskService.get_checkpoint(conn, task_db_id)
+            log.info("Resuming from checkpoint: item_no=%s, processed=%d", checkpoint_id, total_embedded)
+
         while not (_cancel_event and _cancel_event.is_set()):
             async with pool.acquire() as conn:
-                batches = await pick_batches(conn, cfg["model_name"], fetch_size)
+                batches = await pick_batches(conn, cfg["model_name"], fetch_size, after_id=checkpoint_id)
             if not batches:
                 break
 
@@ -182,10 +233,16 @@ async def run(rebuild: bool, max_rows: Optional[int]) -> int:
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for r in results:
-                if isinstance(r, Exception):
+                if isinstance(r, BaseException):
                     log.error("batch error: %s", r)
                 else:
                     total_embedded += r
+
+            if task_db_id is not None and has_service and batches:
+                max_id = max(int(row["item_no"]) for batch in batches for row in batch)
+                checkpoint_id = max_id
+                async with pool.acquire() as conn:
+                    await EmbeddingTaskService.save_checkpoint(conn, task_db_id, checkpoint_id, total_embedded)
 
             elapsed = time.perf_counter() - started
             rate = total_embedded / max(elapsed, 0.001)
@@ -201,6 +258,12 @@ async def run(rebuild: bool, max_rows: Optional[int]) -> int:
             )
         cancelled = _cancel_event.is_set() if _cancel_event else False
         log.info("done. total=%d for %s  (cancelled=%s)", total, cfg["model_name"], cancelled)
+
+        if task_db_id is not None and has_service:
+            async with pool.acquire() as conn:
+                state = "cancelled" if (_cancel_event and _cancel_event.is_set()) else "completed"
+                await EmbeddingTaskService.update_state(conn, task_db_id, state, total_count=total_embedded)
+
         return 0
     finally:
         await pool.close()

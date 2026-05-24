@@ -19,7 +19,7 @@ from app.tasks.embedding_job import embed_run, embed_cancel, auction_embed_run, 
 from app.tasks.image_downloader import download_sold_images
 from app.tasks.celery_app import celery_app
 from app.services.minio_client import get_minio
-from app.services.task_tracker import record_task, get_recent_tasks, get_task, get_worker_tasks
+from app.services.task_tracker import record_task, record_embedding_task, get_recent_tasks, get_task, get_worker_tasks
 from app.core.security import hash_password
 from app.core.request_ip import get_display_ip
 
@@ -86,6 +86,7 @@ def run_embed(
     async_result = embed_run.delay(rebuild=payload.rebuild, limit=payload.limit)
     record_task(async_result.id, "taxa.embed_run",
         {"rebuild": payload.rebuild, "limit": payload.limit})
+    record_embedding_task(async_result.id, "taxa", payload.rebuild, payload.limit)
     return TaskAck(task_id=async_result.id, task_name="taxa.embed_run")
 
 
@@ -106,6 +107,7 @@ def run_auction_embed(
     async_result = auction_embed_run.delay(rebuild=payload.rebuild, limit=payload.limit)
     record_task(async_result.id, "auction.embed_run",
         {"rebuild": payload.rebuild, "limit": payload.limit})
+    record_embedding_task(async_result.id, "auction", payload.rebuild, payload.limit)
     return TaskAck(task_id=async_result.id, task_name="auction.embed_run")
 
 
