@@ -177,6 +177,48 @@ onBeforeUnmount(stopPolling)
       </AlertDescription>
     </Alert>
 
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <Card class="p-4">
+        <div class="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
+          <Clock class="size-3" /> 最近 1 小时
+        </div>
+        <div class="font-serif text-2xl mt-1 tabular-nums">{{ formatNumber(status?.throughput_1h?.calls ?? 0) }}</div>
+        <div class="text-[11px] text-muted-foreground mt-0.5">次调用</div>
+      </Card>
+      <Card class="p-4">
+        <div class="text-[10px] uppercase tracking-widest text-muted-foreground">1h Tokens</div>
+        <div class="font-serif text-2xl mt-1 tabular-nums">{{ formatNumber(status?.throughput_1h?.tokens ?? 0) }}</div>
+        <div class="text-[11px] text-muted-foreground mt-0.5">
+          ¥{{ Number(status?.throughput_1h?.cost ?? 0).toFixed(4) }}
+        </div>
+      </Card>
+      <Card class="p-4">
+        <div class="text-[10px] uppercase tracking-widest text-muted-foreground">24h Tokens</div>
+        <div class="font-serif text-2xl mt-1 tabular-nums">{{ formatNumber(status?.throughput_24h?.tokens ?? 0) }}</div>
+        <div class="text-[11px] text-muted-foreground mt-0.5">
+          ¥{{ Number(status?.throughput_24h?.cost ?? 0).toFixed(4) }}
+        </div>
+      </Card>
+      <Card class="p-4">
+        <div class="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
+          <Clock class="size-3" /> 平均延迟
+        </div>
+        <div class="font-serif text-2xl mt-1 tabular-nums">
+          {{ status?.throughput_1h?.avg_latency_ms ?? status?.throughput_24h?.avg_latency_ms ?? '—' }}
+          <span class="text-sm text-muted-foreground">ms</span>
+        </div>
+        <div class="text-[11px] text-muted-foreground mt-0.5">
+          <span v-if="status?.throughput_24h?.errors">
+            <AlertTriangle class="inline size-3 text-destructive" />
+            24h {{ status.throughput_24h.errors }} 次错误
+          </span>
+          <span v-else class="inline-flex items-center gap-1 text-primary">
+            <CheckCircle2 class="size-3" /> 24h 无错误
+          </span>
+        </div>
+      </Card>
+    </section>
+
     <Card v-if="status?.active_model">
       <CardHeader>
         <div class="flex items-center justify-between flex-wrap gap-3">
@@ -228,48 +270,6 @@ onBeforeUnmount(stopPolling)
         </span>
       </CardFooter>
     </Card>
-
-    <section class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <Card class="p-4">
-        <div class="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
-          <Clock class="size-3" /> 最近 1 小时
-        </div>
-        <div class="font-serif text-2xl mt-1 tabular-nums">{{ formatNumber(status?.throughput_1h?.calls ?? 0) }}</div>
-        <div class="text-[11px] text-muted-foreground mt-0.5">次调用</div>
-      </Card>
-      <Card class="p-4">
-        <div class="text-[10px] uppercase tracking-widest text-muted-foreground">1h Tokens</div>
-        <div class="font-serif text-2xl mt-1 tabular-nums">{{ formatNumber(status?.throughput_1h?.tokens ?? 0) }}</div>
-        <div class="text-[11px] text-muted-foreground mt-0.5">
-          ¥{{ Number(status?.throughput_1h?.cost ?? 0).toFixed(4) }}
-        </div>
-      </Card>
-      <Card class="p-4">
-        <div class="text-[10px] uppercase tracking-widest text-muted-foreground">24h Tokens</div>
-        <div class="font-serif text-2xl mt-1 tabular-nums">{{ formatNumber(status?.throughput_24h?.tokens ?? 0) }}</div>
-        <div class="text-[11px] text-muted-foreground mt-0.5">
-          ¥{{ Number(status?.throughput_24h?.cost ?? 0).toFixed(4) }}
-        </div>
-      </Card>
-      <Card class="p-4">
-        <div class="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground">
-          <Clock class="size-3" /> 平均延迟
-        </div>
-        <div class="font-serif text-2xl mt-1 tabular-nums">
-          {{ status?.throughput_1h?.avg_latency_ms ?? status?.throughput_24h?.avg_latency_ms ?? '—' }}
-          <span class="text-sm text-muted-foreground">ms</span>
-        </div>
-        <div class="text-[11px] text-muted-foreground mt-0.5">
-          <span v-if="status?.throughput_24h?.errors">
-            <AlertTriangle class="inline size-3 text-destructive" />
-            24h {{ status.throughput_24h.errors }} 次错误
-          </span>
-          <span v-else class="inline-flex items-center gap-1 text-primary">
-            <CheckCircle2 class="size-3" /> 24h 无错误
-          </span>
-        </div>
-      </Card>
-    </section>
 
     <!-- ── 拍卖记录嵌入 ── -->
     <Separator />
