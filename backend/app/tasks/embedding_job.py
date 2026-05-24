@@ -44,6 +44,8 @@ def embed_cancel(self) -> dict:
     default_retry_delay=120,
     acks_late=True,
     autoretry_for=(Exception,),
+    time_limit=21600,
+    soft_time_limit=21000,
 )
 def auction_embed_run(self, rebuild: bool = False, limit: int | None = None) -> dict:
     from scripts.embed_auctions import run as auction_run
