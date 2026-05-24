@@ -6,7 +6,7 @@ SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 cd "$ROOT"
 
-BASE_IMAGE="molluscai-base:v0.2"
+BASE_IMAGE="molluscai-base:v0.3"
 BASE_DOCKERFILE="infra/docker/base.Dockerfile"
 COMPOSE="docker compose"
 COMPOSE_PROD="$COMPOSE -f docker-compose.yml -f docker-compose.prod.yml"
