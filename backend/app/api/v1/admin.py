@@ -15,7 +15,7 @@ from app.models.correction import Correction
 from app.models.feedback import Feedback
 from app.schemas.correction import AdminCorrectionOut, AdminCorrectionListOut, CorrectionAdminUpdate
 from app.tasks.auction_scraper import scrape_incremental
-from app.tasks.embedding_job import embed_run, embed_cancel, auction_embed_run, auction_embed_cancel
+from app.tasks.embedding_job import embed_run, auction_embed_run
 from app.tasks.image_downloader import download_sold_images
 from app.tasks.celery_app import celery_app
 from app.services.minio_client import get_minio
@@ -83,20 +83,41 @@ def run_embed(
     payload: EmbedRequest,
     _: User = Depends(require_admin),
 ):
-    async_result = embed_run.delay(rebuild=payload.rebuild, limit=payload.limit)
-    record_task(async_result.id, "taxa.embed_run",
+    from celery.utils import uuid
+    task_id = uuid()
+    record_embedding_task(task_id, "taxa", payload.rebuild, payload.limit)
+    embed_run.apply_async(
+        kwargs={"rebuild": payload.rebuild, "limit": payload.limit},
+        task_id=task_id,
+    )
+    record_task(task_id, "taxa.embed_run",
         {"rebuild": payload.rebuild, "limit": payload.limit})
-    record_embedding_task(async_result.id, "taxa", payload.rebuild, payload.limit)
-    return TaskAck(task_id=async_result.id, task_name="taxa.embed_run")
+    return TaskAck(task_id=task_id, task_name="taxa.embed_run")
+
+
+def _revoke_running_embed(task_name_prefix: str) -> dict:
+    inspect = celery_app.control.inspect(timeout=2)
+    active = inspect.active() or {}
+    revoked_ids: list[str] = []
+    for tasks in active.values():
+        for t in tasks:
+            if t.get("name", "").startswith(task_name_prefix):
+                tid = t.get("id")
+                if tid:
+                    celery_app.control.revoke(tid, terminate=True, signal="SIGTERM")
+                    revoked_ids.append(tid)
+    return {"revoked": revoked_ids}
 
 
 @router.post("/embed/cancel", response_model=TaskAck)
 def cancel_embed(
     _: User = Depends(require_admin),
 ):
-    async_result = embed_cancel.delay()
-    record_task(async_result.id, "taxa.embed_cancel", {})
-    return TaskAck(task_id=async_result.id, task_name="taxa.embed_cancel")
+    result = _revoke_running_embed("taxa.embed_run")
+    revoked = result["revoked"]
+    primary_id = revoked[0] if revoked else "no-active-task"
+    record_task(primary_id, "taxa.embed_cancel", {"revoked": revoked})
+    return TaskAck(task_id=primary_id, task_name="taxa.embed_cancel")
 
 
 @router.post("/embed/auction/run", response_model=TaskAck)
@@ -104,20 +125,27 @@ def run_auction_embed(
     payload: EmbedRequest,
     _: User = Depends(require_admin),
 ):
-    async_result = auction_embed_run.delay(rebuild=payload.rebuild, limit=payload.limit)
-    record_task(async_result.id, "auction.embed_run",
+    from celery.utils import uuid
+    task_id = uuid()
+    record_embedding_task(task_id, "auction", payload.rebuild, payload.limit)
+    auction_embed_run.apply_async(
+        kwargs={"rebuild": payload.rebuild, "limit": payload.limit},
+        task_id=task_id,
+    )
+    record_task(task_id, "auction.embed_run",
         {"rebuild": payload.rebuild, "limit": payload.limit})
-    record_embedding_task(async_result.id, "auction", payload.rebuild, payload.limit)
-    return TaskAck(task_id=async_result.id, task_name="auction.embed_run")
+    return TaskAck(task_id=task_id, task_name="auction.embed_run")
 
 
 @router.post("/embed/auction/cancel", response_model=TaskAck)
 def cancel_auction_embed(
     _: User = Depends(require_admin),
 ):
-    async_result = auction_embed_cancel.delay()
-    record_task(async_result.id, "auction.embed_cancel", {})
-    return TaskAck(task_id=async_result.id, task_name="auction.embed_cancel")
+    result = _revoke_running_embed("auction.embed_run")
+    revoked = result["revoked"]
+    primary_id = revoked[0] if revoked else "no-active-task"
+    record_task(primary_id, "auction.embed_cancel", {"revoked": revoked})
+    return TaskAck(task_id=primary_id, task_name="auction.embed_cancel")
 
 
 class ScraperStats(BaseModel):

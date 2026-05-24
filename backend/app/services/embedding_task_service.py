@@ -33,10 +33,10 @@ class EmbeddingTaskService:
     ) -> None:
         await conn.execute(
             """UPDATE embedding_tasks
-               SET state = $2, error_message = COALESCE($3, error_message),
+               SET state = $2::varchar, error_message = COALESCE($3, error_message),
                    total_count = COALESCE($4, total_count),
                    updated_at = $5,
-                   completed_at = CASE WHEN $2 IN ('completed', 'failed', 'cancelled') THEN $5 ELSE completed_at END
+                   completed_at = CASE WHEN $2::varchar IN ('completed', 'failed', 'cancelled') THEN $5 ELSE completed_at END
                WHERE id = $1""",
             task_id, state, error_message, total_count,
             datetime.now(timezone.utc),
