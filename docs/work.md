@@ -1319,6 +1319,39 @@ git pull && ./dev restart backend celery-worker
 
 无需迁移（schema 不变）。
 
+---
+
+## 物种详情页超长列表折叠 ✂️
+
+### 背景
+`Helix`（5843 children）、`Turbonilla`（1059 accepted children）这类大属，详情页一次性渲染所有下级分类会生成上千条 DOM 节点，滚动卡顿明显。
+
+### 实现（`frontend/src/views/TaxonDetailView.vue`）
+
+| 列表 | 数据源 | 折叠阈值 |
+|---|---|---|
+| 曾用名 Synonyms | `getSynonyms` | 50 |
+| 俗名 Vernaculars | `getVernaculars` | 50 |
+| 分布 Distributions | `getDistributions` | 50 |
+| 下级分类 Children | `getChildren` | 50 |
+
+每个列表加 `showAll*` ref + `visible*` computed（截断到前 50 条）。超过阈值时底部显示「展开全部 (N)」按钮，点击切换为「收起」。`load()` 切换物种时重置全部折叠状态。
+
+### E2E 验证（aphia_id=138421 Turbonilla）
+
+| 状态 | DOM li 数 | 按钮文本 |
+|---|---|---|
+| 初始 | 50 | 展开全部 (1059) |
+| 点击展开 | 1059 | 收起 |
+| 点击收起 | 50 | 展开全部 (1059) |
+
+`vite build` 通过；`TaxonDetailView` chunk 20.15 kB（gzip 6.63 kB）。
+
+### 部署
+```bash
+git pull && docker compose build frontend && docker compose up -d frontend
+```
+
 
 ## 访问地址
 
