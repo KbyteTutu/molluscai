@@ -1,4 +1,4 @@
-FROM molluscai-base:v0.2
+FROM molluscai-base:v0.3
 
 WORKDIR /app
 
