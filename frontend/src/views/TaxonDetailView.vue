@@ -39,6 +39,10 @@ async function load() {
   children.value = []
   classification.value = []
   externalIds.value = []
+  showAllSynonyms.value = false
+  showAllVernaculars.value = false
+  showAllDistributions.value = false
+  showAllChildren.value = false
   const id = route.params.aphiaId
   try {
     const { data } = await taxaApi.getDetail(id)
@@ -130,6 +134,25 @@ const sortedVernaculars = computed(() => {
     return 0
   })
 })
+
+const COLLAPSE_LIMIT = 50
+const showAllSynonyms = ref(false)
+const showAllVernaculars = ref(false)
+const showAllDistributions = ref(false)
+const showAllChildren = ref(false)
+
+const visibleSynonyms = computed(() =>
+  showAllSynonyms.value ? synonyms.value : synonyms.value.slice(0, COLLAPSE_LIMIT)
+)
+const visibleVernaculars = computed(() =>
+  showAllVernaculars.value ? sortedVernaculars.value : sortedVernaculars.value.slice(0, COLLAPSE_LIMIT)
+)
+const visibleDistributions = computed(() =>
+  showAllDistributions.value ? distributions.value : distributions.value.slice(0, COLLAPSE_LIMIT)
+)
+const visibleChildren = computed(() =>
+  showAllChildren.value ? children.value : children.value.slice(0, COLLAPSE_LIMIT)
+)
 
 // --- 冈瓦纳英汉博物词典 已下线（ECS 出口无法访问 ganvana.com）---
 
@@ -292,7 +315,7 @@ async function submitCorrection() {
         </div>
         <ul class="space-y-2">
           <li
-            v-for="s in synonyms"
+            v-for="s in visibleSynonyms"
             :key="s.synonym_aphia_id"
             class="flex items-baseline gap-2 flex-wrap text-sm border-b border-dashed last:border-b-0 pb-2 last:pb-0"
           >
@@ -301,6 +324,11 @@ async function submitCorrection() {
             <Badge v-if="s.status" variant="muted" class="text-[10px] uppercase tracking-wider">{{ s.status }}</Badge>
           </li>
         </ul>
+        <div v-if="synonyms.length > COLLAPSE_LIMIT" class="mt-3 pt-3 border-t border-dashed">
+          <Button variant="ghost" size="sm" class="w-full text-xs text-muted-foreground" @click="showAllSynonyms = !showAllSynonyms">
+            {{ showAllSynonyms ? '收起' : `展开全部 (${synonyms.length})` }}
+          </Button>
+        </div>
       </Card>
 
       <Card v-if="vernaculars.length" class="p-6">
@@ -309,7 +337,7 @@ async function submitCorrection() {
         </div>
         <ul class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
           <li
-            v-for="(v, idx) in sortedVernaculars"
+            v-for="(v, idx) in visibleVernaculars"
             :key="`${v.vernacular}-${idx}`"
             class="flex items-baseline justify-between gap-2"
           >
@@ -317,6 +345,11 @@ async function submitCorrection() {
             <Badge v-if="v.language_code" variant="outline" class="text-[10px] uppercase tracking-wider shrink-0">{{ v.language_code }}</Badge>
           </li>
         </ul>
+        <div v-if="sortedVernaculars.length > COLLAPSE_LIMIT" class="mt-3 pt-3 border-t border-dashed">
+          <Button variant="ghost" size="sm" class="w-full text-xs text-muted-foreground" @click="showAllVernaculars = !showAllVernaculars">
+            {{ showAllVernaculars ? '收起' : `展开全部 (${sortedVernaculars.length})` }}
+          </Button>
+        </div>
       </Card>
 
       <div v-if="taxon.is_marine !== null || taxon.is_freshwater !== null">
@@ -337,7 +370,7 @@ async function submitCorrection() {
         </div>
         <ul class="space-y-2 text-sm">
           <li
-            v-for="(d, idx) in distributions"
+            v-for="(d, idx) in visibleDistributions"
             :key="idx"
             class="border-b border-dashed last:border-b-0 pb-2 last:pb-0"
           >
@@ -348,6 +381,11 @@ async function submitCorrection() {
             </div>
           </li>
         </ul>
+        <div v-if="distributions.length > COLLAPSE_LIMIT" class="mt-3 pt-3 border-t border-dashed">
+          <Button variant="ghost" size="sm" class="w-full text-xs text-muted-foreground" @click="showAllDistributions = !showAllDistributions">
+            {{ showAllDistributions ? '收起' : `展开全部 (${distributions.length})` }}
+          </Button>
+        </div>
       </Card>
 
       <Card v-if="children.length" class="p-6">
@@ -355,7 +393,7 @@ async function submitCorrection() {
           <GitBranch class="size-3.5" /> 下级分类 / Children <span class="text-muted-foreground/60">({{ children.length }})</span>
         </div>
         <ul class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <li v-for="c in children" :key="c.child_aphia_id">
+          <li v-for="c in visibleChildren" :key="c.child_aphia_id">
             <button
               class="flex items-baseline justify-between gap-2 w-full text-left text-sm hover:bg-accent/50 transition-colors px-2 py-1 rounded"
               @click="router.push(`/taxa/${c.child_aphia_id}`)"
@@ -368,6 +406,11 @@ async function submitCorrection() {
             </button>
           </li>
         </ul>
+        <div v-if="children.length > COLLAPSE_LIMIT" class="mt-3 pt-3 border-t border-dashed">
+          <Button variant="ghost" size="sm" class="w-full text-xs text-muted-foreground" @click="showAllChildren = !showAllChildren">
+            {{ showAllChildren ? '收起' : `展开全部 (${children.length})` }}
+          </Button>
+        </div>
       </Card>
 
       <Card v-if="externalIdsByGroup.length" class="p-6">
