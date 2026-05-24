@@ -324,8 +324,30 @@ async def auction_embeddings_status(
         m["pct"] = round((m["embedded"] / total_auctions) * 100, 2) if total_auctions else 0
         coverage.append(m)
 
+    throughput_1h = (await db.execute(text("""
+        SELECT COUNT(*)::int AS calls,
+               COALESCE(SUM(input_tokens),0)::int AS tokens,
+               COALESCE(SUM(cost),0) AS cost,
+               COUNT(*) FILTER (WHERE status='error')::int AS errors,
+               AVG(latency_ms)::int AS avg_latency_ms
+        FROM model_usage_logs
+        WHERE purpose='embedding' AND created_at >= now() - INTERVAL '1 hour'
+    """))).fetchone()
+
+    throughput_24h = (await db.execute(text("""
+        SELECT COUNT(*)::int AS calls,
+               COALESCE(SUM(input_tokens),0)::int AS tokens,
+               COALESCE(SUM(cost),0) AS cost,
+               COUNT(*) FILTER (WHERE status='error')::int AS errors,
+               AVG(latency_ms)::int AS avg_latency_ms
+        FROM model_usage_logs
+        WHERE purpose='embedding' AND created_at >= now() - INTERVAL '24 hours'
+    """))).fetchone()
+
     return {
         "total_auctions": total_auctions,
         "active_model": dict(active_emb._mapping) if active_emb else None,
         "coverage": coverage,
+        "throughput_1h": dict(throughput_1h._mapping),
+        "throughput_24h": dict(throughput_24h._mapping),
     }
