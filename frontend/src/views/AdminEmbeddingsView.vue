@@ -126,6 +126,11 @@ const auctionEmbedded = computed(() => auctionMainCoverage.value?.embedded ?? 0)
 const auctionTotal = computed(() => auctionStatus.value?.total_auctions ?? 0)
 const auctionRemaining = computed(() => Math.max(auctionTotal.value - auctionEmbedded.value, 0))
 
+const auctionIsBusy = computed(() => {
+  if (!auctionStatus.value) return false
+  return (auctionStatus.value.throughput_1h?.calls ?? 0) > 0 && auctionPct.value < 100
+})
+
 const etaLabel = computed(() => {
   const t = status.value?.throughput_1h
   if (!t || !t.calls || remaining.value === 0) return null
@@ -279,6 +284,9 @@ onBeforeUnmount(stopPolling)
             <CardDescription>
               {{ auctionStatus.active_model.model_name }}
               · {{ formatNumber(auctionTotal) }} 条拍卖记录
+              <span v-if="auctionIsBusy" class="ml-2 inline-flex items-center gap-1 text-primary">
+                <Loader2 class="size-3 animate-spin" /> 嵌入中
+              </span>
             </CardDescription>
           </div>
           <div class="text-right">
@@ -310,10 +318,13 @@ onBeforeUnmount(stopPolling)
         <Button size="sm" variant="destructive" :disabled="auctionDispatching" @click="runAuctionEmbed(true)">
           全量重建
         </Button>
-        <Button v-if="auctionCancelling || auctionDispatching" size="sm" variant="outline" :disabled="auctionCancelling" @click="cancelAuctionEmbed">
+        <Button v-if="auctionIsBusy" size="sm" variant="outline" :disabled="auctionCancelling" @click="cancelAuctionEmbed">
           <Loader2 v-if="auctionCancelling" class="size-4 animate-spin" />
           停止任务
         </Button>
+        <span v-if="auctionIsBusy && !auctionCancelling" class="ml-auto text-xs text-muted-foreground">
+          Worker 正在处理，无需重复派发
+        </span>
       </CardFooter>
     </Card>
 
