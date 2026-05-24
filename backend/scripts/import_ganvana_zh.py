@@ -41,7 +41,16 @@ _AUTHOR_TRAILING_RE = re.compile(
     r'\s+(?:[A-Z][a-zéèêëàâîïôûçüöäñ]+\.?\s+)?[A-Z][a-zéèêëàâîïôûçüöäñ]+[，,]\s*1[789]\d{2}\s*$'
 )
 
-# Subgenus in parentheses: (Capitalizedword)
+# Bare author surname(s) at end (no parens, no comma, no year).
+# Genus=capitalized, species=lowercase → any capitalized word
+# after the binomial is an author name (infraspecific epithets are lowercase).
+# "Conus figulinus Linnaeus" → strip " Linnaeus"
+# "Conus otohimeae Kuroda et Ito" → strip " Kuroda et Ito"
+_BARE_AUTHOR_END_RE = re.compile(
+    r'(?:\s+[A-Z][a-zéèêëàâîïôûçüöäñA-Z\u3000-\u303f．\.\-]*)+(?:\s+et)?(?:\s+[A-Z][a-zéèêëàâîïôûçüöäñA-Z．\.\-]*)*\s*$'
+)
+
+# Subgenus in parentheses: (Capitalizedword) or (lowercase)
 _SUBGENUS_RE = re.compile(
     r'\s*[\(\[（][A-Za-z][a-z]+[\)\]）]'
 )
@@ -74,6 +83,7 @@ def clean_name(raw: str) -> str:
     c = c.replace('\u00a0', ' ')   # non-breaking space
     c = _AUTHOR_PAREN_RE.sub('', c)
     c = _AUTHOR_TRAILING_RE.sub('', c)
+    c = _BARE_AUTHOR_END_RE.sub('', c)
     c = _SUBGENUS_RE.sub('', c)
     c = _FOSSIL_RE.sub('', c)
     c = c.strip('.,;: ')
