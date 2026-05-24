@@ -1272,6 +1272,54 @@ docker compose exec backend alembic upgrade head
 
 ---
 
+## 嵌入任务全流程深度修复（5 个 Bug） 🔧
+
+### 背景
+线上 auction 嵌入仍频繁中断，本地用 `limit=1000` 测试时发现表面"任务能跑"但**核心持久化、限流、取消机制全部失效**。完整 E2E 测试暴露 5 个互相掩盖的 bug。
+
+### 修复的 5 个 Bug
+
+| # | Bug | 表现 | 根因 | 修复 |
+|---|-----|------|------|------|
+| 1 | **limit 严重超标** | `limit=1000` 实际嵌入 1536 条 | `fetch_size = BATCH_SIZE × CONCURRENCY × 2 = 768` 固定值，每轮处理后才检查 `>=` | `fetch_size = min(default, max_rows - total_embedded)` 动态收紧 |
+| 2 | **DB 状态从未回写** | `embedding_tasks` 行永远 `state=running`、`total_processed=0` | API 调用 `record_embedding_task()` 创建 DB 行但**返回值丢弃**；Celery 任务**未传 `task_db_id`** 给脚本；脚本里所有 `EmbeddingTaskService` 调用被 `if task_db_id is not None` 屏蔽 | Celery 任务通过 `self.request.id` 反查 `embedding_tasks` 表拿 `task_db_id`，传给脚本 |
+| 3 | **asyncpg 类型推断错** | `update_state` 抛 `AmbiguousParameterError: text vs varchar` | `state = $2` 与 `CASE WHEN $2 IN (...)` 共享 `$2`，asyncpg 无法决定类型 | 加 `$2::varchar` 显式转换 |
+| 4 | **Race condition：Worker 拿不到 task_db_id** | 即使修了 Bug 2，仍打印 `task_db_id=None` | `delay()` 入队 → worker 立即拉取 → 此时 API 才执行 `record_embedding_task()` 写 DB → 查不到 | 改为**先 `record_embedding_task()` 后 `apply_async(task_id=...)`**，并使用 `celery.utils.uuid()` 预先生成 task_id 保证两步使用同一 ID |
+| 5 | **Cancel 完全无效** | `embed_cancel` 任务在 ForkPoolWorker-1 设置 `_cancel_event`，嵌入任务跑在 ForkPoolWorker-2 看不到（不同进程） | Celery prefork pool 各 worker 独立进程，进程内全局变量无法跨进程共享 | 重写 `cancel_*_embed` 端点：用 `celery_app.control.inspect().active()` 找运行中任务 → `control.revoke(task_id, terminate=True, signal='SIGTERM')` 跨进程发送 SIGTERM；脚本里已注册的 SIGTERM handler 触发 graceful shutdown |
+
+### 修改文件
+| 文件 | 改动 |
+|---|---|
+| `backend/scripts/embed_auctions.py` | 动态 `fetch_size`（Bug 1） |
+| `backend/scripts/embed_taxa.py` | 同步动态 `fetch_size`（Bug 1） |
+| `backend/app/tasks/embedding_job.py` | 新增 `_lookup_task_db_id()` 反查 DB（Bug 2、4），传给脚本 |
+| `backend/app/services/embedding_task_service.py` | `update_state` SQL 加 `$2::varchar`（Bug 3） |
+| `backend/app/api/v1/admin.py` | `/embed/(auction/)?run` 改为先 record 后 `apply_async(task_id=)`（Bug 4）；`/embed/(auction/)?cancel` 改为 `inspect→revoke→SIGTERM`（Bug 5） |
+
+### E2E 测试结果（本地 Qwen3-Embedding-8B）
+
+| 测试 | 输入 | 期望 | 实际 |
+|---|---|---|---|
+| **限流精确** | `limit=1000` | 嵌入精确 1000 条 | ✅ 1000 条（速率 98/s，10s 完成） |
+| **DB 状态回写** | 任务完成 | state=completed, total_count=1000, completed_at 写入 | ✅ 全部正确 |
+| **进度日志** | 中间状态 | 实时输出 progress | ✅ 768 → 1000 |
+| **Stop 按钮** | 跑 limit=10000，3 秒后 cancel | SIGTERM → 当前批次完成后停 → state=cancelled | ✅ 768 条嵌完后 graceful 停止，DB 写 cancelled+completed_at |
+| **断点续传** | cancelled 任务重置 state=running 再跑 | 从 last_checkpoint_id (2237) 续，不重复 | ✅ 起步 1536（768+续 768），最终 2000 唯一项 0 重复 |
+
+### 关键设计决策
+
+- **task_id 预生成模式**：用 `celery.utils.uuid()` 在 API 层预生成 UUID，先写 DB 行（含 celery_task_id）再 `apply_async(task_id=...)`，避免 worker 比 DB 写入快的 race。
+- **Cancel = SIGTERM via revoke**：放弃进程内 cancel event 共享方案，统一用 Celery 的 `control.revoke(terminate=True, signal='SIGTERM')` 走 broker 广播。脚本只需一个 SIGTERM handler 即可应对 stop 按钮、容器重启、worker 优雅停止三种场景。
+- **断点续传语义**：每个 Celery 任务对应一个 `embedding_tasks` 行；同一任务被 acks_late 重投递时，`celery_task_id` 不变 → 反查回相同 DB 行 → 继承 last_checkpoint_id。新启动的任务自然从未嵌入项扫起（`LEFT JOIN ... WHERE e.item_no IS NULL`）。
+
+### 部署
+```bash
+git pull && ./dev restart backend celery-worker
+```
+
+无需迁移（schema 不变）。
+
+
 ## 访问地址
 
 | 入口 | 地址 |
