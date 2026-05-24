@@ -211,7 +211,7 @@ async def run(rebuild: bool, max_rows: Optional[int], task_db_id: Optional[int] 
         sem = asyncio.Semaphore(CONCURRENCY)
         total_embedded = 0
         started = time.perf_counter()
-        fetch_size = BATCH_SIZE * CONCURRENCY * 2
+        default_fetch_size = BATCH_SIZE * CONCURRENCY * 2
 
         checkpoint_id = None
         if task_db_id is not None and has_service:
@@ -220,6 +220,14 @@ async def run(rebuild: bool, max_rows: Optional[int], task_db_id: Optional[int] 
             log.info("Resuming from checkpoint: item_no=%s, processed=%d", checkpoint_id, total_embedded)
 
         while not (_cancel_event and _cancel_event.is_set()):
+            if max_rows is not None:
+                remaining = max_rows - total_embedded
+                if remaining <= 0:
+                    break
+                fetch_size = min(default_fetch_size, remaining)
+            else:
+                fetch_size = default_fetch_size
+
             async with pool.acquire() as conn:
                 batches = await pick_batches(conn, cfg["model_name"], fetch_size, after_id=checkpoint_id)
             if not batches:
