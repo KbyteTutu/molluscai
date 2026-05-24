@@ -154,7 +154,7 @@ onMounted(() => {
 watch(isAuthenticated, async (next, prev) => {
   if (next === prev) return
   if (next) {
-    await runSearch(true)
+    if (hasSearched.value || filters.name) await runSearch(true)
   } else {
     search.clearResults()
     offset.value = 0
