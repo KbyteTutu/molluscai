@@ -45,6 +45,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/admin',
+    name: 'AdminDashboard',
+    component: () => import('@/views/AdminDashboardView.vue'),
+    meta: { requiresAuth: true, requiresSuperadmin: true }
+  },
+  {
     path: '/admin/scraper',
     name: 'AdminScraper',
     component: () => import('@/views/AdminScraperView.vue'),

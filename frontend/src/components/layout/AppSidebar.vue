@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Search, BookOpen, MessageCircle, Database, LogOut, User as UserIcon, ChevronRight, Dna, Cpu, Activity, Boxes, ListTodo, Gauge, ScrollText, Users, MessageSquareHeart, Pencil, Settings } from 'lucide-vue-next'
+import { Search, BookOpen, MessageCircle, Database, LogOut, User as UserIcon, ChevronRight, Dna, Cpu, Activity, Boxes, ListTodo, Gauge, ScrollText, Users, MessageSquareHeart, Pencil, Settings, LayoutDashboard } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
 import FeedbackTrigger from '@/components/layout/FeedbackTrigger.vue'
@@ -69,10 +69,11 @@ const sections = computed(() => [
       { name: '问答', to: '#', icon: MessageCircle, enabled: false, hint: '即将推出' }
     ]
   },
-  ...(isSuperadmin.value
+      ...(isSuperadmin.value
     ? [{
         label: '管理',
         items: [
+          { name: '仪表盘', to: '/admin', icon: LayoutDashboard, enabled: true },
           { name: '数据采集', to: '/admin/scraper', icon: Database, enabled: true },
           { name: '任务管理', to: '/admin/tasks', icon: ListTodo, enabled: true },
           { name: '模型配置', to: '/admin/models', icon: Cpu, enabled: true },
