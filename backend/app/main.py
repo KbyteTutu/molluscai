@@ -3,15 +3,42 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.config import settings
 from app.api.v1 import admin, auction, auth, corrections, feedback, models as models_api, taxa, users
 from app.core.exceptions import register_exception_handlers
 
 
+async def bootstrap_app_settings() -> None:
+    """Ensure app_settings table and default rows exist.
+
+    Idempotent: safe to run on every startup. Covers environments where the
+    Postgres init SQL did not run (e.g. existing data volume on upgrade).
+    """
+    from app.database import engine
+
+    async with engine.begin() as conn:
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+              key TEXT PRIMARY KEY,
+              value TEXT NOT NULL,
+              updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """))
+        await conn.execute(text("""
+            INSERT INTO app_settings (key, value) VALUES
+              ('smart_search_auction', 'false'),
+              ('smart_search_taxa', 'true'),
+              ('smart_search_documents', 'false')
+            ON CONFLICT (key) DO NOTHING
+        """))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
+    await bootstrap_app_settings()
     yield
     # Shutdown
     from app.database import engine
