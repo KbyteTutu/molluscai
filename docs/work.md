@@ -1600,3 +1600,26 @@ curl -X POST /api/v1/admin/cleanup-vectors -d '{"target":"auctions"}'
 - `celerybeat-schedule` 文件已删除，`.gitignore` 已有 `celerybeat-schedule*` 规则
 - 所有 7 个文件 LSP 诊断无新增错误
 - 需要执行 `./dev restart` 重建容器使 docker-compose 变更生效
+
+## 2026-05-25: 管理后台性能优化与 UI 修复
+
+### 问题
+
+2 核 8G 服务器上后台页面加载慢；仪表盘按钮高亮错误；智能检索开关在概览上方且状态不加载。
+
+### 修复
+
+| 文件 | 改动 |
+|------|------|
+| `AppSidebar.vue` | `isActive()` 对 `/admin` 使用精确匹配，不再错误高亮所有 admin 子项 |
+| `AdminDashboardView.vue` | 重新排序：概览 → 智能检索开关 → 快捷管理；`Loader2` 替换为 `Skeleton` 骨架屏；15s 自动刷新 stats + settings，onBeforeUnmount 清理 |
+| `AdminScraperView.vue` | 添加 15s stats 自动刷新 |
+| `AdminModelsView.vue` | 添加 15s 模型列表自动刷新 |
+| `AdminUsersView.vue` | 添加 15s 用户列表自动刷新（不重置分页） |
+| `AdminQuotasView.vue` | 添加 15s 配额列表自动刷新 |
+| `AdminSettingsView.vue` | 添加 15s 设置自动刷新 |
+
+排除项（不适合自动刷新）：
+- `AdminTasksView` / `AdminEmbeddingsView` — 已有 5s 轮询
+- `AdminQueriesView` / `AdminFeedbacksView` / `AdminCorrectionsView` — 有分页
+- `AdminUsageView` — 有日期范围选择器
