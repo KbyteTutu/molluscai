@@ -1623,3 +1623,39 @@ curl -X POST /api/v1/admin/cleanup-vectors -d '{"target":"auctions"}'
 - `AdminTasksView` / `AdminEmbeddingsView` — 已有 5s 轮询
 - `AdminQueriesView` / `AdminFeedbacksView` / `AdminCorrectionsView` — 有分页
 - `AdminUsageView` — 有日期范围选择器
+
+## 2026-05-25: Redis 缓存层 — 缓解 admin API 响应慢
+
+### 问题
+
+2 核 8G 服务器上，admin 仪表盘和 embeddings 状态页加载极慢。每个页面触发 4-7 个后端 API 调用，每次调用都执行多次 COUNT/MAX/GROUP BY/JOIN 聚合查询。
+
+### 修复
+
+新增 `app/core/cache.py` — 基于 Redis 的异步响应缓存：
+
+| 端点 | TTL | 原因 |
+|------|-----|------|
+| `GET /scraper/stats` | 60s | 5 次 auction COUNT/MAX + MinIO 全量递归扫描 |
+| `GET /queries/stats` | 60s | 5 次 query_logs 聚合（GROUP BY + DATE_TRUNC + JOIN） |
+| `GET /embeddings/status` | 30s | taxa COUNT(315k) + model_usage_logs 1h/24h |
+| `GET /auction-embeddings/status` | 30s | 同上 |
+| `GET /settings` | 30s | 高频轮询 |
+
+缓存失效：
+- `POST /scraper/run` / `POST /scraper/download-images` → bust scraper stats
+- `POST /cleanup-vectors` → bust scraper stats
+- `PATCH /settings` → bust settings
+- `PATCH /quotas/{role}` → bust quotas
+
+| 文件 | 改动 |
+|------|------|
+| `backend/app/core/cache.py` | **新建** — `cached()` / `bust()` / `get()` / `set()` |
+| `backend/app/api/v1/admin.py` | 所有重型 GET 加缓存，POST/PATCH 加失效 |
+| `backend/app/api/v1/models.py` | 两个 embeddings/status 端点加 30s 缓存 |
+
+### 验证
+
+- 首次请求正常查询 DB，后续请求从 Redis 返回（延迟 <5ms）
+- LSP 诊断无新增错误
+- `redis>=5.0` 已包含 `redis.asyncio` 支持
