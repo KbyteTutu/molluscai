@@ -513,6 +513,52 @@ cmd_prod_import() {
   bash "$ROOT/scripts/prod_import.sh" "$@"
 }
 
+cmd_clean_vectors() {
+  require_running "$PG_CONTAINER"
+  local target="${1:-}"
+  if [[ -z "$target" ]]; then
+    err "usage: $0 clean-vectors {auctions|taxa|all}"
+    err "  auctions  — truncate auction_embeddings (~21 GB freed)"
+    err "  taxa      — truncate taxa_embeddings (~4 GB freed)"
+    err "  all       — truncate ALL vector tables (auction + taxa + text + image chunks)"
+    die "missing target"
+  fi
+  case "$target" in
+    auctions) ;;
+    taxa) ;;
+    all) ;;
+    *) die "invalid target '$target'. Must be: auctions | taxa | all" ;;
+  esac
+
+  warn "This will PERMANENTLY DELETE vector data: $target"
+  warn "Embedding API costs already spent will NOT be refunded."
+  printf 'Type %sclean-vectors%s to confirm: ' "$C_ERR" "$C_END"
+  local confirm; read -r confirm
+  [[ "$confirm" == "clean-vectors" ]] || die "aborted"
+
+  local before after freed
+  before=$(docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -tAc \
+    "SELECT pg_size_pretty(pg_database_size('$PG_DB'))")
+
+  case "$target" in
+    auctions)
+      docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -c "TRUNCATE auction_embeddings;" >/dev/null
+      ;;
+    taxa)
+      docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -c "TRUNCATE taxa_embeddings;" >/dev/null
+      ;;
+    all)
+      docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" \
+        -c "TRUNCATE auction_embeddings, taxa_embeddings, text_chunks, image_chunks;" >/dev/null
+      ;;
+  esac
+
+  after=$(docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -tAc \
+    "SELECT pg_size_pretty(pg_database_size('$PG_DB'))")
+  ok "vectors cleaned. DB size: $before → $after"
+  warn "Run 'VACUUM FULL' later to reclaim disk space if needed."
+}
+
 cmd_help() {
   cat <<EOF
 ${C_HEAD}MolluscAI dev toolbox${C_END}
@@ -547,6 +593,7 @@ ${C_HEAD}Data:${C_END}
   seed              import legacy/postgres_backup.sql into auctions
   worms-import <f>  import a WoRMS sqlite (.sqlite or .sqlite.gz) into taxa.*
   prod-import [w] [b]  full production import (worms sqlite + auction backup)
+  clean-vectors {auctions|taxa|all}  truncate vector tables to free disk space
   backup [path]     pg_dump to backups/<timestamp>.sql.gz
   restore <file>    restore from backup (DESTRUCTIVE)
 
@@ -581,6 +628,7 @@ case "$cmd" in
   seed)     cmd_seed "$@" ;;
   worms-import)   cmd_worms_import "$@" ;;
   prod-import)    cmd_prod_import "$@" ;;
+  clean-vectors)  cmd_clean_vectors "$@" ;;
   scrape)   cmd_scrape "$@" ;;
   images)   cmd_images "$@" ;;
   test)     cmd_test "$@" ;;

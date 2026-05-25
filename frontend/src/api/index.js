@@ -139,7 +139,10 @@ export const adminApi = {
   listFeedbacks: (params) => apiClient.get('/admin/feedbacks', { params }),
   updateFeedback: (id, data) => apiClient.patch(`/admin/feedbacks/${id}`, data),
   listCorrections: (params) => apiClient.get('/admin/corrections', { params }),
-  updateCorrection: (id, data) => apiClient.patch(`/admin/corrections/${id}`, data)
+  updateCorrection: (id, data) => apiClient.patch(`/admin/corrections/${id}`, data),
+  getSettings: () => apiClient.get('/admin/settings'),
+  updateSettings: (data) => apiClient.patch('/admin/settings', data),
+  cleanupVectors: (target) => apiClient.post('/admin/cleanup-vectors', { target })
 }
 
 export const userApi = {

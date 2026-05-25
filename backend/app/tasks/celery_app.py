@@ -41,15 +41,16 @@ celery_app.conf.update(
             "schedule": crontab(minute="*/30"),
             "kwargs": {"batch_size": 50},
         },
-        "embed-taxa-hourly": {
-            "task": "taxa.embed_run",
-            "schedule": crontab(minute=5, hour="*/2"),
-            "kwargs": {"rebuild": False},
-        },
-        "embed-auctions-daily": {
-            "task": "auction.embed_run",
-            "schedule": crontab(minute=30, hour="*/4"),
-            "kwargs": {"rebuild": False},
-        },
+        # Embed tasks are disabled by default — enable via Admin → Settings.
+        # "embed-taxa-hourly": {
+        #     "task": "taxa.embed_run",
+        #     "schedule": crontab(minute=5, hour="*/2"),
+        #     "kwargs": {"rebuild": False},
+        # },
+        # "embed-auctions-daily": {
+        #     "task": "auction.embed_run",
+        #     "schedule": crontab(minute=30, hour="*/4"),
+        #     "kwargs": {"rebuild": False},
+        # },
     },
 )

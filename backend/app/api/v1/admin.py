@@ -13,6 +13,7 @@ from app.models.user import User, RoleQuota, QueryLog
 from app.models.auction import Auction
 from app.models.correction import Correction
 from app.models.feedback import Feedback
+from app.models.setting import Setting
 from app.schemas.correction import AdminCorrectionOut, AdminCorrectionListOut, CorrectionAdminUpdate
 from app.tasks.auction_scraper import scrape_incremental
 from app.tasks.embedding_job import embed_run, auction_embed_run
@@ -870,3 +871,79 @@ async def update_correction(
         user = user_row.scalar_one_or_none()
 
     return _serialize_admin_correction(corr, user)
+
+
+class CleanupVectorsRequest(BaseModel):
+    target: str = Field(..., pattern="^(auctions|taxa|all)$")
+
+
+class CleanupVectorsResponse(BaseModel):
+    ok: bool
+    target: str
+    rows_deleted: int
+
+
+@router.get("/settings")
+async def get_settings(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    rows = (await db.execute(select(Setting))).scalars().all()
+    return {s.key: s.value for s in rows}
+
+
+@router.patch("/settings")
+async def patch_settings(
+    payload: dict[str, str],
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    existing_rows = (await db.execute(select(Setting))).scalars().all()
+    existing_keys = {s.key for s in existing_rows}
+    for key, value in payload.items():
+        if key in existing_keys:
+            await db.execute(
+                text("UPDATE app_settings SET value = :value, updated_at = now() WHERE key = :key"),
+                {"key": key, "value": value},
+            )
+    await db.commit()
+    rows = (await db.execute(select(Setting))).scalars().all()
+    return {s.key: s.value for s in rows}
+
+
+@router.post("/cleanup-vectors", response_model=CleanupVectorsResponse)
+async def cleanup_vectors(
+    payload: CleanupVectorsRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    target = payload.target
+    rows_deleted = 0
+
+    if target in ("auctions", "all"):
+        count_result = await db.execute(text("SELECT COUNT(*) FROM auction_embeddings"))
+        rows_deleted += int(count_result.scalar_one() or 0)
+        await db.execute(text("DROP INDEX IF EXISTS idx_auction_emb_hnsw"))
+        await db.execute(text("TRUNCATE auction_embeddings"))
+        await db.execute(text(
+            "CREATE INDEX idx_auction_emb_hnsw ON auction_embeddings USING hnsw (embedding halfvec_cosine_ops) WITH (m = 16, ef_construction = 64)"
+        ))
+
+    if target in ("taxa", "all"):
+        count_result = await db.execute(text("SELECT COUNT(*) FROM taxa_embeddings"))
+        rows_deleted += int(count_result.scalar_one() or 0)
+        await db.execute(text("DROP INDEX IF EXISTS idx_taxa_emb_hnsw"))
+        await db.execute(text("TRUNCATE taxa_embeddings"))
+        await db.execute(text(
+            "CREATE INDEX idx_taxa_emb_hnsw ON taxa_embeddings USING hnsw (embedding halfvec_cosine_ops) WITH (m = 16, ef_construction = 64)"
+        ))
+
+    if target == "all":
+        count_result = await db.execute(text("SELECT COUNT(*) FROM text_chunks"))
+        rows_deleted += int(count_result.scalar_one() or 0)
+        count_result = await db.execute(text("SELECT COUNT(*) FROM image_chunks"))
+        rows_deleted += int(count_result.scalar_one() or 0)
+        await db.execute(text("TRUNCATE text_chunks, image_chunks"))
+
+    await db.commit()
+    return CleanupVectorsResponse(ok=True, target=target, rows_deleted=rows_deleted)

@@ -9,6 +9,7 @@ from app.models.model_config import ModelConfig, ModelUsageLog
 from app.models.correction import Correction
 from app.models.feedback import Feedback
 from app.models.embedding_task import EmbeddingTask
+from app.models.setting import Setting
 
 __all__ = [
     "Base",
@@ -26,4 +27,5 @@ __all__ = [
     "ModelUsageLog",
     "Feedback",
     "EmbeddingTask",
+    "Setting",
 ]

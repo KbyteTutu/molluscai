@@ -103,6 +103,12 @@ const routes = [
     name: 'AdminCorrections',
     component: () => import('@/views/AdminCorrectionsView.vue'),
     meta: { requiresAuth: true, requiresSuperadmin: true }
+  },
+  {
+    path: '/admin/settings',
+    name: 'AdminSettings',
+    component: () => import('@/views/AdminSettingsView.vue'),
+    meta: { requiresAuth: true, requiresSuperadmin: true }
   }
 ]
 

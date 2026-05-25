@@ -3,7 +3,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSearchStore } from '@/stores/search'
 import { useAuthStore } from '@/stores/auth'
-import { auctionApi } from '@/api'
+import { auctionApi, adminApi } from '@/api'
 import { Search, SlidersHorizontal, LayoutGrid, Rows3, ChevronDown, Lock, Sparkles, Type } from 'lucide-vue-next'
 import SnailLogo from '@/components/brand/ShellLogo.vue'
 import Card from '@/components/ui/Card.vue'
@@ -36,6 +36,7 @@ const isAuthenticated = computed(() => auth.isAuthenticated)
 const view = ref('cards')
 const mode = ref('lexical')
 const filtersOpen = ref(false)
+const smartSearchEnabled = ref(false)
 
 const anonItems = ref([])
 const anonLoading = ref(false)
@@ -146,16 +147,39 @@ async function loadAnonRecent() {
   }
 }
 
+async function fetchSettings() {
+  if (!isAuthenticated.value) return
+  try {
+    const res = await adminApi.getSettings()
+    if (res.data) {
+      smartSearchEnabled.value = res.data.smart_search_auction
+      if (!smartSearchEnabled.value && mode.value === 'hybrid') {
+        mode.value = 'lexical'
+      }
+    }
+  } catch (e) {
+    // Fail silently for non-superadmins or errors
+    smartSearchEnabled.value = false
+    if (mode.value === 'hybrid') {
+      mode.value = 'lexical'
+    }
+  }
+}
+
 onMounted(() => {
   totalRecords.value = 2990337
   totalSold.value = 1727375
+  fetchSettings()
 })
 
 watch(isAuthenticated, async (next, prev) => {
   if (next === prev) return
   if (next) {
+    fetchSettings()
     if (hasSearched.value || filters.name) await runSearch(true)
   } else {
+    smartSearchEnabled.value = false
+    if (mode.value === 'hybrid') mode.value = 'lexical'
     search.clearResults()
     offset.value = 0
     await loadAnonRecent()
@@ -228,6 +252,7 @@ watch(isAuthenticated, async (next, prev) => {
               <Type class="size-3.5" /> 词法
             </button>
             <button
+              v-if="smartSearchEnabled"
               type="button"
               :class="['inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
                 mode === 'hybrid' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground']"

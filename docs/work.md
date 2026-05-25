@@ -1403,3 +1403,86 @@ git pull && docker compose build frontend && docker compose up -d frontend
 | 后端 API | http://localhost:8000 |
 | Swagger | http://localhost:8000/docs |
 | MinIO Console | http://localhost:9003 |
+
+---
+
+## App Settings + Vector Cleanup Admin APIs (2026-05-25) ✅
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `infra/postgres/init/10-app-settings.sql` | `app_settings` 表（key TEXT PK, value TEXT, updated_at TIMESTAMPTZ）+ 3 条种子：smart_search_auction=false, smart_search_taxa=true, smart_search_documents=false |
+| `backend/app/models/setting.py` | `Setting` SQLAlchemy ORM 模型 |
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `backend/app/models/__init__.py` | 注册 `Setting` 导入与 `__all__` 导出 |
+| `backend/app/api/v1/admin.py` | 新增 3 个端点（均 `require_admin = RequirePermission(Permission.MANAGE_USERS)`）： |
+
+### API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/admin/settings` | 返回所有 settings 的 `{key: value}` 字典 |
+| `PATCH` | `/admin/settings` | body `{key: value, ...}`，仅更新表中已存在的 key（忽略未知 key），返回更新后字典 |
+| `POST` | `/admin/cleanup-vectors` | body `{target: "auctions"\|"taxa"\|"all"}`；先 COUNT 再 TRUNCATE + 重建 HNSW 索引，返回 `{ok, target, rows_deleted}` |
+
+### cleanup-vectors 行为
+
+- `auctions`: TRUNCATE `auction_embeddings` + DROP/CREATE `idx_auction_emb_hnsw`
+- `taxa`: TRUNCATE `taxa_embeddings` + DROP/CREATE `idx_taxa_emb_hnsw`
+- `all`: 以上两者 + TRUNCATE `text_chunks, image_chunks`
+- 所有操作在单事务内完成，row count 在 TRUNCATE 前统计
+
+---
+
+## 禁用自动嵌入 + 智能检索开关 + 清理命令 (2026-05-25) ✅
+
+### 背景
+
+拍卖向量嵌入已消耗约 100 元 API 费用且仍在持续。用户要求：(1) 部署后不再自动启动嵌入任务，(2) 后台提供各智能检索开关，(3) 提供清理磁盘命令。
+
+### 改动概览
+
+| 类别 | 文件 | 说明 |
+|------|------|------|
+| **关键修复** | `backend/app/tasks/celery_app.py` | 注释 `embed-taxa-hourly` 和 `embed-auctions-daily` beat 调度 |
+| **新模型** | `backend/app/models/setting.py` | `app_settings` 表 ORM 模型 |
+| **新 SQL** | `infra/postgres/init/10-app-settings.sql` | 建表 + 种子（auction=false, taxa=true, documents=false） |
+| **后端 API** | `backend/app/api/v1/admin.py` | +3 端点：GET/PATCH `/admin/settings`, POST `/admin/cleanup-vectors` |
+| **前端页面** | `frontend/src/views/AdminSettingsView.vue` | 新建设置管理页：开关 toggle + 清理按钮 |
+| **前端组件** | `frontend/src/components/ui/Switch.vue` | 新建 Reka UI Switch 组件 |
+| **前端改动** | `frontend/src/views/HomeView.vue` | `onMounted` 调 `adminApi.getSettings()`，`smart_search_auction=false` 时隐藏「智能」按钮并回退 mode 为 lexical |
+| **前端改动** | `frontend/src/components/layout/AppSidebar.vue` | 管理组新增「系统设置」入口（Settings 图标） |
+| **前端改动** | `frontend/src/router/index.js` | 新增 `/admin/settings` 路由 |
+| **前端改动** | `frontend/src/api/index.js` | 新增 `getSettings / updateSettings / cleanupVectors` |
+| **CLI** | `scripts/dev.sh` | 新增 `./dev clean-vectors {auctions\|taxa\|all}` 命令 |
+
+### 智能检索开关表
+
+| Key | 默认值 | 说明 |
+|-----|--------|------|
+| `smart_search_auction` | `false` | 拍卖语义搜索（消耗 embedding API） |
+| `smart_search_taxa` | `true` | 物种混合检索 |
+| `smart_search_documents` | `false` | 文献语义检索（P2 阶段） |
+
+### 磁盘清理
+
+```bash
+# CLI（直接 SQL，最快）
+./dev clean-vectors auctions   # 释放约 21 GB
+./dev clean-vectors taxa       # 释放约 4 GB
+./dev clean-vectors all        # 全部清空
+
+# 或通过 API（需 superadmin token）
+curl -X POST /api/v1/admin/cleanup-vectors -d '{"target":"auctions"}'
+```
+
+### 验证
+
+- 后端/Worker/Beat/Frontend 4 个镜像全部构建通过
+- `docker compose up -d` 后 celery-beat 日志无嵌入任务调度
+- `app_settings` 表已写入运行中 DB，API 可读写
