@@ -26,10 +26,10 @@ const REFRESH_INTERVAL = 15000
 let statsTimer = null
 let settingsTimer = null
 
-// Smart Search Settings
+// Smart Search Settings — defaults match backend bootstrap in main.py
 const settings = ref({
   smart_search_auction: false,
-  smart_search_taxa: false,
+  smart_search_taxa: true,
   smart_search_documents: false
 })
 const settingsLoaded = ref(false)
@@ -57,9 +57,9 @@ async function fetchSettings() {
       }
     }
   } catch {
-    // Settings load silently — non-critical, keep previous values
+    // Keep default values; poll will retry
   } finally {
-    settingsLoaded.value = true
+    if (!settingsLoaded.value) settingsLoaded.value = true
   }
 }
 
