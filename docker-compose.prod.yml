@@ -24,9 +24,10 @@ services:
     restart: always
     volumes: []
 
-  celery-beat:
-    restart: always
-    volumes: []
+  # celery-beat: disabled — beat_schedule={}, no periodic tasks
+  # celery-beat:
+  #   restart: always
+  #   volumes: []
 
   frontend:
     restart: always

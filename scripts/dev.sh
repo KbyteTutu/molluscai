@@ -200,16 +200,16 @@ cmd_nuke() {
 cmd_rebuild() {
   log "force rebuilding base + app images..."
   docker build --no-cache -f "$BASE_DOCKERFILE" -t "$BASE_IMAGE" .
-  $COMPOSE build --no-cache backend celery-worker celery-beat
-  $COMPOSE up -d backend celery-worker celery-beat
+  $COMPOSE build --no-cache backend celery-worker
+  $COMPOSE up -d backend celery-worker
   ok "rebuilt and restarted"
 }
 
 cmd_restart() {
   local svc="${1:-}"
   if [[ -z "$svc" ]]; then
-    log "recreating backend + celery-worker + celery-beat..."
-    $COMPOSE up -d --force-recreate backend celery-worker celery-beat
+    log "recreating backend + celery-worker..."
+    $COMPOSE up -d --force-recreate backend celery-worker
   else
     log "recreating $svc..."
     $COMPOSE up -d --force-recreate "$svc"
@@ -462,8 +462,8 @@ cmd_prod_down() {
 cmd_prod_restart() {
   local svc="${1:-}"
   if [[ -z "$svc" ]]; then
-    log "recreating backend + celery-worker + celery-beat (picks up compose/.env changes)..."
-    $COMPOSE_PROD up -d --force-recreate backend celery-worker celery-beat
+    log "recreating backend + celery-worker (picks up compose/.env changes)..."
+    $COMPOSE_PROD up -d --force-recreate backend celery-worker
   else
     log "recreating $svc (picks up compose/.env changes)..."
     $COMPOSE_PROD up -d --force-recreate "$svc"

@@ -114,7 +114,7 @@ async def _pick_sold_without_local(limit: int, item_no_from: int = None, item_no
         await conn.close()
 
 
-@celery_app.task(name="auction.download_images", bind=True)
+@celery_app.task(name="auction.download_images", bind=True, max_retries=0)
 def download_sold_images(self, batch_size: int = 50, item_no_from: int = None, item_no_to: int = None) -> dict:
     """Pick up to `batch_size` sold auctions missing local images and download them."""
     loop = asyncio.new_event_loop()

@@ -27,8 +27,11 @@ celery_app.conf.update(
     worker_max_tasks_per_child=50,
     broker_connection_retry_on_startup=True,
     broker_connection_retry=True,
-    broker_connection_max_retries=None,
-    task_acks_late=True,
+    broker_connection_max_retries=5,
+    # DO NOT enable task_acks_late globally — it causes tasks to auto-resume
+    # on worker restart from stale Redis queue entries.  Set per-task instead
+    # when truly needed for critical non-idempotent work.
+    task_acks_late=False,
     task_reject_on_worker_lost=True,
     beat_schedule={},
 )

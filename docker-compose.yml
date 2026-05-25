@@ -124,30 +124,33 @@ services:
       - ./backend:/app
     command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
 
-  celery-beat:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    image: molluscai-celery-beat:latest
-    container_name: molluscai-celery-beat
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      POSTGRES_HOST: "postgres"
-      POSTGRES_PORT: "5432"
-      POSTGRES_USER: ${POSTGRES_USER:-mollusc}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mollusc_dev}
-      POSTGRES_DB: ${POSTGRES_DB:-molluscai}
-      REDIS_URL: "redis://redis:6379/0"
-      CELERY_BROKER_URL: "redis://redis:6379/0"
-      CELERY_RESULT_BACKEND: "redis://redis:6379/0"
-    volumes:
-      - ./backend:/app
-    command: celery -A app.tasks.celery_app beat --loglevel=info
+  # celery-beat is disabled — beat_schedule={} means no periodic tasks.
+  # The stale celerybeat-schedule DBM file was causing auto-resume of old
+  # schedules across container restarts.  Uncomment only when re-adding schedules.
+  # celery-beat:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   image: molluscai-celery-beat:latest
+  #   container_name: molluscai-celery-beat
+  #   restart: unless-stopped
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   environment:
+  #     POSTGRES_HOST: "postgres"
+  #     POSTGRES_PORT: "5432"
+  #     POSTGRES_USER: ${POSTGRES_USER:-mollusc}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mollusc_dev}
+  #     POSTGRES_DB: ${POSTGRES_DB:-molluscai}
+  #     REDIS_URL: "redis://redis:6379/0"
+  #     CELERY_BROKER_URL: "redis://redis:6379/0"
+  #     CELERY_RESULT_BACKEND: "redis://redis:6379/0"
+  #   volumes:
+  #     - ./backend:/app
+  #   command: celery -A app.tasks.celery_app beat --loglevel=info
 
   frontend:
     build:

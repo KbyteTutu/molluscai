@@ -203,7 +203,7 @@ async def _get_max_item_no() -> int:
         await conn.close()
 
 
-@celery_app.task(name="auction.scrape_incremental", bind=True)
+@celery_app.task(name="auction.scrape_incremental", bind=True, max_retries=0)
 def scrape_incremental(self, batch_size: int = 200, start_id: Optional[int] = None) -> dict:
     """
     Incrementally scrape `batch_size` items starting after MAX(item_no) (or from `start_id`).
