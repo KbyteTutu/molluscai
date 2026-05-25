@@ -1,5 +1,5 @@
 from celery import Celery
-from celery.schedules import crontab
+from celery.signals import task_prerun, task_postrun, task_failure, task_revoked
 
 from app.config import settings
 
@@ -30,27 +30,32 @@ celery_app.conf.update(
     broker_connection_max_retries=None,
     task_acks_late=True,
     task_reject_on_worker_lost=True,
-    beat_schedule={
-        "scrape-auctions-hourly": {
-            "task": "auction.scrape_incremental",
-            "schedule": crontab(minute=15),
-            "kwargs": {"batch_size": 200},
-        },
-        "download-sold-images-half-hourly": {
-            "task": "auction.download_images",
-            "schedule": crontab(minute="*/30"),
-            "kwargs": {"batch_size": 50},
-        },
-        # Embed tasks are disabled by default — enable via Admin → Settings.
-        # "embed-taxa-hourly": {
-        #     "task": "taxa.embed_run",
-        #     "schedule": crontab(minute=5, hour="*/2"),
-        #     "kwargs": {"rebuild": False},
-        # },
-        # "embed-auctions-daily": {
-        #     "task": "auction.embed_run",
-        #     "schedule": crontab(minute=30, hour="*/4"),
-        #     "kwargs": {"rebuild": False},
-        # },
-    },
+    beat_schedule={},
 )
+
+
+@task_prerun.connect
+def _on_task_prerun(task_id, task, args, kwargs, **_):
+    from app.services.task_tracker import record_task, update_task_state, get_task
+    if get_task(task_id) is None:
+        record_task(task_id, task.name, kwargs or {})
+    update_task_state(task_id, "STARTED")
+
+
+@task_postrun.connect
+def _on_task_postrun(task_id, task, args, kwargs, retval, state, **_):
+    from app.services.task_tracker import update_task_state
+    result = retval if isinstance(retval, dict) else ({"value": str(retval)} if retval is not None else None)
+    update_task_state(task_id, state or "SUCCESS", result=result)
+
+
+@task_failure.connect
+def _on_task_failure(task_id, exception, **_):
+    from app.services.task_tracker import update_task_state
+    update_task_state(task_id, "FAILURE", result={"error": str(exception)})
+
+
+@task_revoked.connect
+def _on_task_revoked(request, **_):
+    from app.services.task_tracker import update_task_state
+    update_task_state(request.id, "REVOKED")

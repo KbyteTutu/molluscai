@@ -1509,3 +1509,30 @@ curl -X POST /api/v1/admin/cleanup-vectors -d '{"target":"auctions"}'
 |------|------|
 | `frontend/src/router/index.js` | 新增 `/admin` → AdminDashboard 路由（第 48-52 行，admin 路由第一条） |
 | `frontend/src/components/layout/AppSidebar.vue` | 管理分组置顶「仪表盘」入口（LayoutDashboard 图标） |
+
+---
+
+## Celery 全面整改 (2026-05-25) ✅
+
+排查到三个问题：仪表盘"活跃任务"永远显示 0、beat 在悄悄自动跑、beat 派发的任务在 `/admin/tasks` 看不到。
+
+### 根因
+
+| Bug | 位置 | 现象 |
+|-----|------|------|
+| 仪表盘过滤错状态字符串 | `AdminDashboardView.vue:99` | 过滤 `state === 'running'`，但 Celery 状态是大写 `'STARTED'`/`'PENDING'`，永远匹配不上 |
+| Beat 仍在自动调度 | `celery_app.py:33-43` | `scrape-auctions-hourly` + `download-sold-images-half-hourly` 每小时/30 分钟自动跑 |
+| Beat 任务在任务列表看不到 | `task_tracker.py:25` | `record_task()` 只在 API 触发时调用；beat 直接发到 broker，绕过记录 |
+
+### 修复
+
+| 文件 | 改动 |
+|------|------|
+| `backend/app/tasks/celery_app.py` | `beat_schedule={}` 全部清空；新增 4 个 Celery signal handler（`task_prerun`/`task_postrun`/`task_failure`/`task_revoked`），任何来源的任务都自动入 Redis 列表 |
+| `frontend/src/views/AdminDashboardView.vue` | "活跃任务"改用 `workers.active + workers.reserved`（来自 `inspect()` 的真实数据，非 Redis 列表过滤） |
+
+### 验证
+
+- Beat 重启后日志只有 `beat: Starting...`，无 `Sending due task`
+- 直接 `send_task()` 派发一条 `auction.scrape_incremental`（模拟 beat 派发），Redis 列表立即记录，状态自动从 PENDING → SUCCESS，附带 `result` 和 `date_done`
+- 所有容器 CPU 全部回落到 < 0.2%

@@ -96,8 +96,9 @@ async function fetchStats() {
     }
 
     if (tasksRes.status === 'fulfilled') {
-      const runningTasks = tasksRes.value.data.tasks?.filter(t => t.state === 'running') || []
-      stats.value.activeTasks = runningTasks.length.toString()
+      const w = tasksRes.value.data.workers || {}
+      const active = (w.active || 0) + (w.reserved || 0)
+      stats.value.activeTasks = active.toString()
     }
   } catch (error) {
     console.error('Failed to fetch stats overview', error)
