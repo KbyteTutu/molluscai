@@ -62,11 +62,11 @@ watch(() => route.fullPath, () => { mobileOpen.value = false })
           >京ICP备2022009849号</a>
           <span class="text-muted-foreground/40">·</span>
           <a
-            href="https://tutu.gold"
+            href="https://molluscai.com"
             target="_blank"
             rel="noopener noreferrer"
             class="hover:text-foreground transition-colors"
-          >tutu.gold</a>
+          >molluscai.com</a>
         </div>
         </div>
       </footer>
