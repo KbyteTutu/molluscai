@@ -1486,3 +1486,26 @@ curl -X POST /api/v1/admin/cleanup-vectors -d '{"target":"auctions"}'
 - 后端/Worker/Beat/Frontend 4 个镜像全部构建通过
 - `docker compose up -d` 后 celery-beat 日志无嵌入任务调度
 - `app_settings` 表已写入运行中 DB，API 可读写
+
+---
+
+## 管理后台仪表盘 (2026-05-25) ✅
+
+### 新增
+
+| 文件 | 说明 |
+|------|------|
+| `frontend/src/views/AdminDashboardView.vue` | 管理后台综合仪表盘（354 行） |
+
+### 仪表盘功能
+
+- **智能检索开关**：拍卖/物种/文献 三卡片，带状态 Badge + Switch 即时切换
+- **系统概览**：7 张统计卡片（拍卖记录、物种数据、用户数量、今日查询、数据库大小、图片缓存、活跃任务），并行调用 4 个 API
+- **快捷管理**：11 个管理页卡片式导航，hover 高亮
+
+### 修改
+
+| 文件 | 改动 |
+|------|------|
+| `frontend/src/router/index.js` | 新增 `/admin` → AdminDashboard 路由（第 48-52 行，admin 路由第一条） |
+| `frontend/src/components/layout/AppSidebar.vue` | 管理分组置顶「仪表盘」入口（LayoutDashboard 图标） |
