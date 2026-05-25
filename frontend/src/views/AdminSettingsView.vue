@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { adminApi } from '@/api'
 import { toast } from 'vue-sonner'
 import { Settings, Database } from 'lucide-vue-next'
@@ -17,6 +17,12 @@ const settings = ref({
   smart_search_documents: false
 })
 const loading = ref(true)
+
+const REFRESH_INTERVAL = 15000
+let pollTimer = null
+
+function startPolling() { stopPolling(); pollTimer = setInterval(fetchSettings, REFRESH_INTERVAL) }
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null } }
 
 async function fetchSettings() {
   loading.value = true
@@ -62,7 +68,9 @@ async function handleCleanup(target) {
 
 onMounted(() => {
   fetchSettings()
+  startPolling()
 })
+onBeforeUnmount(stopPolling)
 </script>
 
 <template>

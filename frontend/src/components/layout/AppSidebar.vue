@@ -92,6 +92,7 @@ const sections = computed(() => [
 
 function isActive(to) {
   if (to === '/') return route.path === '/'
+  if (to === '/admin') return route.path === '/admin'
   return route.path.startsWith(to)
 }
 

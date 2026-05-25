@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { adminApi } from '@/api'
 import { RefreshCw, Crown, Save } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
@@ -48,6 +48,12 @@ const sortedRows = computed(() => {
   }
   return [...rows.value].sort((a, b) => idx(a) - idx(b))
 })
+
+const REFRESH_INTERVAL = 15000
+let pollTimer = null
+
+function startPolling() { stopPolling(); pollTimer = setInterval(load, REFRESH_INTERVAL) }
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null } }
 
 async function load() {
   loading.value = true
@@ -119,7 +125,8 @@ function roleBadgeVariant(role) {
   return 'secondary'
 }
 
-onMounted(load)
+onMounted(() => { load(); startPolling() })
+onBeforeUnmount(stopPolling)
 </script>
 
 <template>

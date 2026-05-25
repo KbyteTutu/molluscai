@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { Database, ImageDown, Loader2, RefreshCw } from 'lucide-vue-next'
 import { adminApi } from '@/api'
 import Card from '@/components/ui/Card.vue'
@@ -69,7 +69,19 @@ async function runImages() {
   }
 }
 
-onMounted(loadStats)
+const REFRESH_INTERVAL = 15000
+let pollTimer = null
+
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(loadStats, REFRESH_INTERVAL)
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+}
+
+onMounted(() => { loadStats(); startPolling() })
+onBeforeUnmount(stopPolling)
 </script>
 
 <template>

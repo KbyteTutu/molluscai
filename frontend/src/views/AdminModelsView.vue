@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { adminApi } from '@/api'
 import {
   Plus, Trash2, PlayCircle, CheckCircle2, XCircle, Loader2, RefreshCw, Zap
@@ -54,6 +54,12 @@ const PROVIDERS = [
 const embedModels = computed(() => models.value.filter(m => m.purpose === 'embedding'))
 const rerankModels = computed(() => models.value.filter(m => m.purpose === 'rerank'))
 const activeEmbed = computed(() => embedModels.value.find(m => m.is_active))
+
+const REFRESH_INTERVAL = 15000
+let pollTimer = null
+
+function startPolling() { stopPolling(); pollTimer = setInterval(load, REFRESH_INTERVAL) }
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null } }
 
 async function load() {
   loading.value = true
@@ -166,7 +172,8 @@ async function runEmbed(rebuild = false) {
   } finally { rebuilding.value = false }
 }
 
-onMounted(load)
+onMounted(() => { load(); startPolling() })
+onBeforeUnmount(stopPolling)
 </script>
 
 <template>

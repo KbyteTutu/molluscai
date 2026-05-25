@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { adminApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { RefreshCw, Lock, Unlock, KeyRound, Search as SearchIcon, X, Check } from 'lucide-vue-next'
@@ -58,6 +58,12 @@ function setBusy(id, key, v) {
 function isBusy(id, key) {
   return Boolean(busy.value[id]?.[key])
 }
+
+const REFRESH_INTERVAL = 15000
+let pollTimer = null
+
+function startPolling() { stopPolling(); pollTimer = setInterval(() => load(false), REFRESH_INTERVAL) }
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null } }
 
 async function load(reset = false) {
   if (reset) offset.value = 0
@@ -190,7 +196,8 @@ watch(() => filters.q, () => {
 })
 watch(() => [filters.role, filters.is_active], () => load(true))
 
-onMounted(() => load(true))
+onMounted(() => { load(true); startPolling() })
+onBeforeUnmount(stopPolling)
 </script>
 
 <template>
