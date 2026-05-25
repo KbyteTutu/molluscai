@@ -170,6 +170,7 @@ get_admin_token() {
 cmd_up() {
   ensure_infra
   ensure_base
+  rm -f "$ROOT/backend/celerybeat-schedule"*
   log "starting full stack..."
   $COMPOSE up -d --build
   ok "stack started"
