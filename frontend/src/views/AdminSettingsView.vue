@@ -23,7 +23,11 @@ async function fetchSettings() {
   try {
     const res = await adminApi.getSettings()
     if (res.data) {
-      settings.value = res.data
+      settings.value = {
+        smart_search_auction: res.data.smart_search_auction === 'true',
+        smart_search_taxa: res.data.smart_search_taxa === 'true',
+        smart_search_documents: res.data.smart_search_documents === 'true',
+      }
     }
   } catch (error) {
     toast.error('加载设置失败')
@@ -35,9 +39,9 @@ async function fetchSettings() {
 async function updateSetting(key, value) {
   const originalValue = settings.value[key]
   settings.value[key] = value
-  
+
   try {
-    await adminApi.updateSettings({ [key]: value })
+    await adminApi.updateSettings({ [key]: value ? 'true' : 'false' })
     toast.success('设置已保存')
   } catch (error) {
     settings.value[key] = originalValue
@@ -97,7 +101,7 @@ onMounted(() => {
               :disabled="loading"
             />
           </div>
-          <div class="flex items-center justify-between">
+          <div v-if="false" class="flex items-center justify-between">
             <div class="space-y-0.5">
               <label class="text-sm font-medium text-slate-900 dark:text-slate-100">文献智能检索</label>
               <p class="text-sm text-slate-500 dark:text-slate-400">启用后知识库文献支持语义检索（P2 阶段）</p>

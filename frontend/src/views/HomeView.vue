@@ -152,13 +152,12 @@ async function fetchSettings() {
   try {
     const res = await adminApi.getSettings()
     if (res.data) {
-      smartSearchEnabled.value = res.data.smart_search_auction
+      smartSearchEnabled.value = res.data.smart_search_auction === 'true'
       if (!smartSearchEnabled.value && mode.value === 'hybrid') {
         mode.value = 'lexical'
       }
     }
   } catch (e) {
-    // Fail silently for non-superadmins or errors
     smartSearchEnabled.value = false
     if (mode.value === 'hybrid') {
       mode.value = 'lexical'

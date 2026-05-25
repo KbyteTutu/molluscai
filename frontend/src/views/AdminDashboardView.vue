@@ -46,7 +46,11 @@ async function fetchSettings() {
   try {
     const res = await adminApi.getSettings()
     if (res.data) {
-      settings.value = res.data
+      settings.value = {
+        smart_search_auction: res.data.smart_search_auction === 'true',
+        smart_search_taxa: res.data.smart_search_taxa === 'true',
+        smart_search_documents: res.data.smart_search_documents === 'true',
+      }
     }
   } catch (error) {
     toast.error('加载检索开关状态失败')
@@ -58,9 +62,9 @@ async function fetchSettings() {
 async function updateSetting(key, value) {
   const originalValue = settings.value[key]
   settings.value[key] = value
-  
+
   try {
-    await adminApi.updateSettings({ [key]: value })
+    await adminApi.updateSettings({ [key]: value ? 'true' : 'false' })
     toast.success('设置已保存')
   } catch (error) {
     settings.value[key] = originalValue
@@ -132,7 +136,7 @@ onMounted(() => {
     <!-- Smart Search Toggles -->
     <div class="space-y-3">
       <h2 class="text-lg font-semibold tracking-tight">智能检索开关</h2>
-      <div class="grid gap-4 md:grid-cols-3">
+      <div class="grid gap-4 md:grid-cols-2">
         <!-- Auction Smart Search -->
         <Card>
           <CardContent class="p-6 flex flex-col h-full">
@@ -192,7 +196,7 @@ onMounted(() => {
         </Card>
 
         <!-- Document Smart Search -->
-        <Card>
+        <Card v-if="false">
           <CardContent class="p-6 flex flex-col h-full">
             <div class="flex justify-between items-start mb-4">
               <div class="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg text-purple-600 dark:text-purple-400">
