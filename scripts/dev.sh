@@ -188,6 +188,7 @@ cmd_nuke() {
   local confirm; read -r confirm
   [[ "$confirm" == "nuke" ]] || die "aborted"
   $COMPOSE down --remove-orphans 2>/dev/null || true
+  rm -f "$ROOT/backend/celerybeat-schedule"*
   for v in "${VOLUMES[@]}"; do docker volume rm -f "$v" 2>/dev/null || true; done
   docker network rm "$NETWORK_NAME" 2>/dev/null || true
   docker image rm -f "$BASE_IMAGE" 2>/dev/null || true

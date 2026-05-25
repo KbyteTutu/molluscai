@@ -1536,3 +1536,22 @@ curl -X POST /api/v1/admin/cleanup-vectors -d '{"target":"auctions"}'
 - Beat 重启后日志只有 `beat: Starting...`，无 `Sending due task`
 - 直接 `send_task()` 派发一条 `auction.scrape_incremental`（模拟 beat 派发），Redis 列表立即记录，状态自动从 PENDING → SUCCESS，附带 `result` 和 `date_done`
 - 所有容器 CPU 全部回落到 < 0.2%
+
+### 追加修复 — Beat 调度持久化文件残留 (2026-05-25)
+
+**现象**: commit `08725b3` 已把 `beat_schedule={}` 清空并重启 beat，但 beat 仍在坚持发 `scrape-auctions-hourly` 和 `download-sold-images-half-hourly`，worker 继续每小时 200 条爬取 + 每 30 分钟 50 张图片下载。
+
+**根因**: Celery beat 把调度状态持久化在 `celerybeat-schedule` 文件（Python shelve/dbm 格式）。`beat_schedule` 代码改为 `{}` 后**文件并未自动清空** — beat 启动时优先从文件恢复已有 schedule，不会对比代码 diff。该文件通过 compose volume mount (`./backend:/app`) 映射到 host，在重建/重启周期中持续存活。
+
+**修复**:
+
+1. **删除残留文件**: 停 beat → `rm backend/celerybeat-schedule` → 启 beat（自动重建空文件）
+2. **`./dev nuke` 追加清理**: `rm -f "$ROOT/backend/celerybeat-schedule"*` — 确保 nuke 重建流程不留任何遗留
+
+**验证**: beat 重启后 30 秒窗口无任何 `Sending due task` 日志；worker 最后任务停留在此前时刻。与 commit `08725b3` 的修复互补形成完整闭环：代码清 schedule 是前提，删除持久化文件是生效必要条件。
+
+| 文件 | 改动 |
+|------|------|
+| `scripts/dev.sh` | `cmd_nuke` 追加删除 stale schedule 文件 |
+
+---
