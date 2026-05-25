@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import Permission, RequirePermission, get_db
+from app.core.cache import cached
 from app.models.user import User
 from app.schemas.model_config import (
     ModelConfigCreate,
@@ -236,64 +237,67 @@ async def embeddings_status(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    total_taxa = (await db.execute(text("SELECT COUNT(*) FROM taxa"))).scalar_one()
+    async def _compute():
+        total_taxa = (await db.execute(text("SELECT COUNT(*) FROM taxa"))).scalar_one()
 
-    active_emb = (await db.execute(text("""
-        SELECT id, model_name, provider, model_id, base_url, price_input, price_unit
-        FROM model_configs WHERE purpose='embedding' AND is_active=true
-        ORDER BY id DESC LIMIT 1
-    """))).fetchone()
+        active_emb = (await db.execute(text("""
+            SELECT id, model_name, provider, model_id, base_url, price_input, price_unit
+            FROM model_configs WHERE purpose='embedding' AND is_active=true
+            ORDER BY id DESC LIMIT 1
+        """))).fetchone()
 
-    coverage_rows = (await db.execute(text("""
-        SELECT model_name, COUNT(*)::int AS embedded,
-               MAX(created_at) AS last_at,
-               MIN(created_at) AS first_at
-        FROM taxa_embeddings
-        GROUP BY model_name
-        ORDER BY embedded DESC
-    """))).fetchall()
+        coverage_rows = (await db.execute(text("""
+            SELECT model_name, COUNT(*)::int AS embedded,
+                   MAX(created_at) AS last_at,
+                   MIN(created_at) AS first_at
+            FROM taxa_embeddings
+            GROUP BY model_name
+            ORDER BY embedded DESC
+        """))).fetchall()
 
-    throughput_1h = (await db.execute(text("""
-        SELECT COUNT(*)::int AS calls,
-               COALESCE(SUM(input_tokens),0)::int AS tokens,
-               COALESCE(SUM(cost),0) AS cost,
-               COUNT(*) FILTER (WHERE status='error')::int AS errors,
-               AVG(latency_ms)::int AS avg_latency_ms
-        FROM model_usage_logs
-        WHERE purpose='embedding' AND created_at >= now() - INTERVAL '1 hour'
-    """))).fetchone()
+        throughput_1h = (await db.execute(text("""
+            SELECT COUNT(*)::int AS calls,
+                   COALESCE(SUM(input_tokens),0)::int AS tokens,
+                   COALESCE(SUM(cost),0) AS cost,
+                   COUNT(*) FILTER (WHERE status='error')::int AS errors,
+                   AVG(latency_ms)::int AS avg_latency_ms
+            FROM model_usage_logs
+            WHERE purpose='embedding' AND created_at >= now() - INTERVAL '1 hour'
+        """))).fetchone()
 
-    throughput_24h = (await db.execute(text("""
-        SELECT COUNT(*)::int AS calls,
-               COALESCE(SUM(input_tokens),0)::int AS tokens,
-               COALESCE(SUM(cost),0) AS cost,
-               COUNT(*) FILTER (WHERE status='error')::int AS errors,
-               AVG(latency_ms)::int AS avg_latency_ms
-        FROM model_usage_logs
-        WHERE purpose='embedding' AND created_at >= now() - INTERVAL '24 hours'
-    """))).fetchone()
+        throughput_24h = (await db.execute(text("""
+            SELECT COUNT(*)::int AS calls,
+                   COALESCE(SUM(input_tokens),0)::int AS tokens,
+                   COALESCE(SUM(cost),0) AS cost,
+                   COUNT(*) FILTER (WHERE status='error')::int AS errors,
+                   AVG(latency_ms)::int AS avg_latency_ms
+            FROM model_usage_logs
+            WHERE purpose='embedding' AND created_at >= now() - INTERVAL '24 hours'
+        """))).fetchone()
 
-    recent_errors = (await db.execute(text("""
-        SELECT id, model_name, error_message, created_at
-        FROM model_usage_logs
-        WHERE purpose='embedding' AND status='error'
-        ORDER BY created_at DESC LIMIT 5
-    """))).fetchall()
+        recent_errors = (await db.execute(text("""
+            SELECT id, model_name, error_message, created_at
+            FROM model_usage_logs
+            WHERE purpose='embedding' AND status='error'
+            ORDER BY created_at DESC LIMIT 5
+        """))).fetchall()
 
-    coverage = []
-    for r in coverage_rows:
-        m = dict(r._mapping)
-        m["pct"] = round((m["embedded"] / total_taxa) * 100, 2) if total_taxa else 0
-        coverage.append(m)
+        coverage = []
+        for r in coverage_rows:
+            m = dict(r._mapping)
+            m["pct"] = round((m["embedded"] / total_taxa) * 100, 2) if total_taxa else 0
+            coverage.append(m)
 
-    return {
-        "total_taxa": total_taxa,
-        "active_model": dict(active_emb._mapping) if active_emb else None,
-        "coverage": coverage,
-        "throughput_1h": dict(throughput_1h._mapping),
-        "throughput_24h": dict(throughput_24h._mapping),
-        "recent_errors": [dict(r._mapping) for r in recent_errors],
-    }
+        return dict(
+            total_taxa=total_taxa,
+            active_model=dict(active_emb._mapping) if active_emb else None,
+            coverage=coverage,
+            throughput_1h=dict(throughput_1h._mapping),
+            throughput_24h=dict(throughput_24h._mapping),
+            recent_errors=[dict(r._mapping) for r in recent_errors],
+        )
+
+    return await cached("admin:embeddings_status", ttl=30, compute=_compute)
 
 
 @router.get("/auction-embeddings/status")
@@ -301,53 +305,56 @@ async def auction_embeddings_status(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    total_auctions = (await db.execute(text("SELECT COUNT(*) FROM auctions"))).scalar_one()
+    async def _compute():
+        total_auctions = (await db.execute(text("SELECT COUNT(*) FROM auctions"))).scalar_one()
 
-    active_emb = (await db.execute(text("""
-        SELECT id, model_name, provider, model_id, base_url, price_input, price_unit
-        FROM model_configs WHERE purpose='embedding' AND is_active=true
-        ORDER BY id DESC LIMIT 1
-    """))).fetchone()
+        active_emb = (await db.execute(text("""
+            SELECT id, model_name, provider, model_id, base_url, price_input, price_unit
+            FROM model_configs WHERE purpose='embedding' AND is_active=true
+            ORDER BY id DESC LIMIT 1
+        """))).fetchone()
 
-    coverage_rows = (await db.execute(text("""
-        SELECT model_name, COUNT(*)::int AS embedded,
-               MAX(created_at) AS last_at,
-               MIN(created_at) AS first_at
-        FROM auction_embeddings
-        GROUP BY model_name
-        ORDER BY embedded DESC
-    """))).fetchall()
+        coverage_rows = (await db.execute(text("""
+            SELECT model_name, COUNT(*)::int AS embedded,
+                   MAX(created_at) AS last_at,
+                   MIN(created_at) AS first_at
+            FROM auction_embeddings
+            GROUP BY model_name
+            ORDER BY embedded DESC
+        """))).fetchall()
 
-    coverage = []
-    for r in coverage_rows:
-        m = dict(r._mapping)
-        m["pct"] = round((m["embedded"] / total_auctions) * 100, 2) if total_auctions else 0
-        coverage.append(m)
+        coverage = []
+        for r in coverage_rows:
+            m = dict(r._mapping)
+            m["pct"] = round((m["embedded"] / total_auctions) * 100, 2) if total_auctions else 0
+            coverage.append(m)
 
-    throughput_1h = (await db.execute(text("""
-        SELECT COUNT(*)::int AS calls,
-               COALESCE(SUM(input_tokens),0)::int AS tokens,
-               COALESCE(SUM(cost),0) AS cost,
-               COUNT(*) FILTER (WHERE status='error')::int AS errors,
-               AVG(latency_ms)::int AS avg_latency_ms
-        FROM model_usage_logs
-        WHERE purpose='embedding' AND created_at >= now() - INTERVAL '1 hour'
-    """))).fetchone()
+        throughput_1h = (await db.execute(text("""
+            SELECT COUNT(*)::int AS calls,
+                   COALESCE(SUM(input_tokens),0)::int AS tokens,
+                   COALESCE(SUM(cost),0) AS cost,
+                   COUNT(*) FILTER (WHERE status='error')::int AS errors,
+                   AVG(latency_ms)::int AS avg_latency_ms
+            FROM model_usage_logs
+            WHERE purpose='embedding' AND created_at >= now() - INTERVAL '1 hour'
+        """))).fetchone()
 
-    throughput_24h = (await db.execute(text("""
-        SELECT COUNT(*)::int AS calls,
-               COALESCE(SUM(input_tokens),0)::int AS tokens,
-               COALESCE(SUM(cost),0) AS cost,
-               COUNT(*) FILTER (WHERE status='error')::int AS errors,
-               AVG(latency_ms)::int AS avg_latency_ms
-        FROM model_usage_logs
-        WHERE purpose='embedding' AND created_at >= now() - INTERVAL '24 hours'
-    """))).fetchone()
+        throughput_24h = (await db.execute(text("""
+            SELECT COUNT(*)::int AS calls,
+                   COALESCE(SUM(input_tokens),0)::int AS tokens,
+                   COALESCE(SUM(cost),0) AS cost,
+                   COUNT(*) FILTER (WHERE status='error')::int AS errors,
+                   AVG(latency_ms)::int AS avg_latency_ms
+            FROM model_usage_logs
+            WHERE purpose='embedding' AND created_at >= now() - INTERVAL '24 hours'
+        """))).fetchone()
 
-    return {
-        "total_auctions": total_auctions,
-        "active_model": dict(active_emb._mapping) if active_emb else None,
-        "coverage": coverage,
-        "throughput_1h": dict(throughput_1h._mapping),
-        "throughput_24h": dict(throughput_24h._mapping),
-    }
+        return dict(
+            total_auctions=total_auctions,
+            active_model=dict(active_emb._mapping) if active_emb else None,
+            coverage=coverage,
+            throughput_1h=dict(throughput_1h._mapping),
+            throughput_24h=dict(throughput_24h._mapping),
+        )
+
+    return await cached("admin:auction_embeddings_status", ttl=30, compute=_compute)

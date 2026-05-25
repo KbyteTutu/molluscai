@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import Permission, RequirePermission
 from app.api.v1.feedback import ALLOWED_CATEGORIES
+from app.core.cache import cached, bust
 from app.database import get_db
 from app.models.user import User, RoleQuota, QueryLog
 from app.models.auction import Auction
@@ -51,7 +52,7 @@ class TaskAck(BaseModel):
 
 
 @router.post("/scraper/run", response_model=TaskAck)
-def run_scraper(
+async def run_scraper(
     payload: ScrapeRequest,
     _: User = Depends(require_admin),
 ):
@@ -61,11 +62,12 @@ def run_scraper(
     )
     record_task(async_result.id, "auction.scrape_incremental",
         {"batch_size": payload.batch_size, "start_id": payload.start_id})
+    await bust("admin:scraper_stats")
     return TaskAck(task_id=async_result.id, task_name="auction.scrape_incremental")
 
 
 @router.post("/scraper/download-images", response_model=TaskAck)
-def run_image_download(
+async def run_image_download(
     payload: ImageDownloadRequest,
     _: User = Depends(require_admin),
 ):
@@ -76,6 +78,7 @@ def run_image_download(
     )
     record_task(async_result.id, "auction.download_images",
         {"batch_size": payload.batch_size})
+    await bust("admin:scraper_stats")
     return TaskAck(task_id=async_result.id, task_name="auction.download_images")
 
 
@@ -164,42 +167,46 @@ async def scraper_stats(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    total = (await db.execute(select(func.count()).select_from(Auction))).scalar_one()
-    max_no = (await db.execute(select(func.max(Auction.item_no)))).scalar_one()
-    last_date = (await db.execute(select(func.max(Auction.end_date)))).scalar_one()
-    last_created = (await db.execute(select(func.max(Auction.created_at)))).scalar_one()
-    imgs_done = (await db.execute(
-        select(func.count()).select_from(Auction).where(
-            Auction.images_local.isnot(None),
-            func.cardinality(Auction.images_local) > 0,
-        )
-    )).scalar_one()
-    imgs_pending = (await db.execute(
-        select(func.count()).select_from(Auction).where(
-            Auction.is_sold == True,
-            Auction.images_origin.isnot(None),
-            (Auction.images_local.is_(None)) | (func.cardinality(Auction.images_local) == 0),
-        )
-    )).scalar_one()
+    async def _compute():
+        total = (await db.execute(select(func.count()).select_from(Auction))).scalar_one()
+        max_no = (await db.execute(select(func.max(Auction.item_no)))).scalar_one()
+        last_date = (await db.execute(select(func.max(Auction.end_date)))).scalar_one()
+        last_created = (await db.execute(select(func.max(Auction.created_at)))).scalar_one()
+        imgs_done = (await db.execute(
+            select(func.count()).select_from(Auction).where(
+                Auction.images_local.isnot(None),
+                func.cardinality(Auction.images_local) > 0,
+            )
+        )).scalar_one()
+        imgs_pending = (await db.execute(
+            select(func.count()).select_from(Auction).where(
+                Auction.is_sold == True,
+                Auction.images_origin.isnot(None),
+                (Auction.images_local.is_(None)) | (func.cardinality(Auction.images_local) == 0),
+            )
+        )).scalar_one()
 
-    size_mb = 0.0
-    try:
-        client = get_minio()
-        if client.bucket_exists("auction-images"):
-            total_bytes = sum(obj.size for obj in client.list_objects("auction-images", recursive=True))
-            size_mb = round(total_bytes / (1024 * 1024), 2)
-    except Exception:
-        pass
+        size_mb = 0.0
+        try:
+            client = get_minio()
+            if client.bucket_exists("auction-images"):
+                total_bytes = sum(obj.size for obj in client.list_objects("auction-images", recursive=True))
+                size_mb = round(total_bytes / (1024 * 1024), 2)
+        except Exception:
+            pass
 
-    return ScraperStats(
-        total_records=total,
-        max_item_no=max_no,
-        last_end_date=last_date,
-        last_created_at=last_created.isoformat() if last_created else None,
-        images_downloaded=imgs_done,
-        images_pending=imgs_pending,
-        storage_size_mb=size_mb,
-    )
+        return dict(
+            total_records=total,
+            max_item_no=max_no,
+            last_end_date=last_date,
+            last_created_at=last_created.isoformat() if last_created else None,
+            images_downloaded=imgs_done,
+            images_pending=imgs_pending,
+            storage_size_mb=size_mb,
+        )
+
+    data = await cached("admin:scraper_stats", ttl=60, compute=_compute)
+    return ScraperStats(**data)
 
 
 class TaskInfo(BaseModel):
@@ -312,6 +319,7 @@ async def update_quota(
         setattr(quota, k, v)
     await db.commit()
     await db.refresh(quota)
+    await bust("admin:quotas")
     return RoleQuotaOut.model_validate(quota)
 
 
@@ -348,91 +356,95 @@ async def query_stats(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    async def _compute():
+        since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    total_row = await db.execute(
-        select(func.count(QueryLog.id)).where(QueryLog.created_at >= since)
-    )
-    total = int(total_row.scalar_one() or 0)
-
-    rl_row = await db.execute(
-        select(func.count(QueryLog.id)).where(
-            QueryLog.created_at >= since, QueryLog.status_code == 429
+        total_row = await db.execute(
+            select(func.count(QueryLog.id)).where(QueryLog.created_at >= since)
         )
-    )
-    rate_limited_429 = int(rl_row.scalar_one() or 0)
+        total = int(total_row.scalar_one() or 0)
 
-    by_type_rows = await db.execute(
-        select(QueryLog.query_type, func.count(QueryLog.id))
-        .where(QueryLog.created_at >= since)
-        .group_by(QueryLog.query_type)
-        .order_by(func.count(QueryLog.id).desc())
-    )
-    by_type = [
-        QueryStatsByType(query_type=qt or "unknown", count=int(c))
-        for qt, c in by_type_rows.all()
-    ]
+        rl_row = await db.execute(
+            select(func.count(QueryLog.id)).where(
+                QueryLog.created_at >= since, QueryLog.status_code == 429
+            )
+        )
+        rate_limited_429 = int(rl_row.scalar_one() or 0)
 
-    by_day_rows = await db.execute(
-        text("""
-            SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
-                   COALESCE(query_type, 'unknown') AS query_type,
-                   COUNT(*) AS n
-            FROM query_logs
-            WHERE created_at >= :since
-            GROUP BY 1, 2
-            ORDER BY 1 ASC, 2 ASC
-        """),
-        {"since": since},
-    )
-    by_day = [
-        QueryStatsByDay(day=r.day, query_type=r.query_type, count=int(r.n))
-        for r in by_day_rows
-    ]
+        by_type_rows = await db.execute(
+            select(QueryLog.query_type, func.count(QueryLog.id))
+            .where(QueryLog.created_at >= since)
+            .group_by(QueryLog.query_type)
+            .order_by(func.count(QueryLog.id).desc())
+        )
+        by_type = [
+            {"query_type": qt or "unknown", "count": int(c)}
+            for qt, c in by_type_rows.all()
+        ]
 
-    top_users_rows = await db.execute(
-        text("""
-            SELECT q.user_id::text AS user_id, u.username, COUNT(*) AS n
-            FROM query_logs q
-            LEFT JOIN users u ON u.id = q.user_id
-            WHERE q.created_at >= :since AND q.user_id IS NOT NULL
-            GROUP BY q.user_id, u.username
-            ORDER BY n DESC
-            LIMIT 10
-        """),
-        {"since": since},
-    )
-    top_users = [
-        QueryStatsTopUser(user_id=r.user_id, username=r.username, count=int(r.n))
-        for r in top_users_rows
-    ]
+        by_day_rows = await db.execute(
+            text("""
+                SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+                       COALESCE(query_type, 'unknown') AS query_type,
+                       COUNT(*) AS n
+                FROM query_logs
+                WHERE created_at >= :since
+                GROUP BY 1, 2
+                ORDER BY 1 ASC, 2 ASC
+            """),
+            {"since": since},
+        )
+        by_day = [
+            {"day": r.day, "query_type": r.query_type, "count": int(r.n)}
+            for r in by_day_rows
+        ]
 
-    top_keywords_rows = await db.execute(
-        text("""
-            SELECT lower(query_text) AS kw, COUNT(*) AS n
-            FROM query_logs
-            WHERE created_at >= :since
-              AND query_text IS NOT NULL
-              AND query_text != ''
-              AND length(query_text) BETWEEN 2 AND 100
-              AND query_type IN ('taxa', 'ai')
-            GROUP BY 1
-            ORDER BY n DESC
-            LIMIT 10
-        """),
-        {"since": since},
-    )
-    top_keywords = [{"keyword": r.kw, "count": int(r.n)} for r in top_keywords_rows]
+        top_users_rows = await db.execute(
+            text("""
+                SELECT q.user_id::text AS user_id, u.username, COUNT(*) AS n
+                FROM query_logs q
+                LEFT JOIN users u ON u.id = q.user_id
+                WHERE q.created_at >= :since AND q.user_id IS NOT NULL
+                GROUP BY q.user_id, u.username
+                ORDER BY n DESC
+                LIMIT 10
+            """),
+            {"since": since},
+        )
+        top_users = [
+            {"user_id": r.user_id, "username": r.username, "count": int(r.n)}
+            for r in top_users_rows
+        ]
 
-    return QueryStatsResponse(
-        total=total,
-        rate_limited_429=rate_limited_429,
-        by_type=by_type,
-        by_day=by_day,
-        top_users=top_users,
-        top_keywords=top_keywords,
-        range_days=days,
-    )
+        top_keywords_rows = await db.execute(
+            text("""
+                SELECT lower(query_text) AS kw, COUNT(*) AS n
+                FROM query_logs
+                WHERE created_at >= :since
+                  AND query_text IS NOT NULL
+                  AND query_text != ''
+                  AND length(query_text) BETWEEN 2 AND 100
+                  AND query_type IN ('taxa', 'ai')
+                GROUP BY 1
+                ORDER BY n DESC
+                LIMIT 10
+            """),
+            {"since": since},
+        )
+        top_keywords = [{"keyword": r.kw, "count": int(r.n)} for r in top_keywords_rows]
+
+        return dict(
+            total=total,
+            rate_limited_429=rate_limited_429,
+            by_type=by_type,
+            by_day=by_day,
+            top_users=top_users,
+            top_keywords=top_keywords,
+            range_days=days,
+        )
+
+    data = await cached("admin:query_stats", ttl=60, compute=_compute, suffix=str(days))
+    return QueryStatsResponse(**data)
 
 
 class QueryLogOut(BaseModel):
@@ -888,8 +900,11 @@ async def get_settings(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ):
-    rows = (await db.execute(select(Setting))).scalars().all()
-    return {s.key: s.value for s in rows}
+    async def _compute():
+        rows = (await db.execute(select(Setting))).scalars().all()
+        return {s.key: s.value for s in rows}
+
+    return await cached("admin:settings", ttl=30, compute=_compute)
 
 
 @router.patch("/settings")
@@ -907,6 +922,7 @@ async def patch_settings(
                 {"key": key, "value": value},
             )
     await db.commit()
+    await bust("admin:settings")
     rows = (await db.execute(select(Setting))).scalars().all()
     return {s.key: s.value for s in rows}
 
@@ -946,4 +962,5 @@ async def cleanup_vectors(
         await db.execute(text("TRUNCATE text_chunks, image_chunks"))
 
     await db.commit()
+    await bust("admin:scraper_stats")
     return CleanupVectorsResponse(ok=True, target=target, rows_deleted=rows_deleted)
