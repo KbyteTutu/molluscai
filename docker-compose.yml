@@ -9,11 +9,23 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-mollusc}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mollusc_dev}
       POSTGRES_DB: ${POSTGRES_DB:-molluscai}
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=64MB
+      -c effective_cache_size=1GB
+      -c max_connections=30
+      -c wal_buffers=8MB
+      -c random_page_cost=1.1
+      -c jit=off
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - molluscai-postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/init:/docker-entrypoint-initdb.d
+    mem_limit: 1g
+    mem_reservation: 512m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mollusc} -d ${POSTGRES_DB:-molluscai}"]
       interval: 5s
@@ -24,10 +36,13 @@ services:
     image: redis:7-alpine
     container_name: molluscai-redis
     restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
     ports:
       - "${REDIS_PORT:-6380}:6379"
     volumes:
       - molluscai-redis-data:/data
+    mem_limit: 192m
+    mem_reservation: 64m
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -47,6 +62,8 @@ services:
       - "${MINIO_CONSOLE_PORT:-9003}:9001"
     volumes:
       - "${MINIO_DATA_PATH:-molluscai-minio-data}:/data"
+    mem_limit: 512m
+    mem_reservation: 128m
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -91,6 +108,8 @@ services:
     volumes:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    mem_limit: 1g
+    mem_reservation: 256m
 
   celery-worker:
     build:
@@ -122,7 +141,9 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
     volumes:
       - ./backend:/app
-    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=1
+    mem_limit: 1g
+    mem_reservation: 256m
 
   # celery-beat is disabled — beat_schedule={} means no periodic tasks.
   # The stale celerybeat-schedule DBM file was causing auto-resume of old
@@ -165,6 +186,8 @@ services:
       - "${FRONTEND_PORT:-3000}:80"
     volumes:
       - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    mem_limit: 128m
+    mem_reservation: 32m
 
 # external: true on network + volumes keeps them alive across compose
 # project recreation and daemon restarts. ./dev prod-up creates them.

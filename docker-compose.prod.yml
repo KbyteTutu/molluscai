@@ -3,6 +3,16 @@ services:
     restart: always
     ports: !reset
       - "127.0.0.1:5433:5432"
+    command: >
+      postgres
+      -c shared_buffers=384MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=64MB
+      -c effective_cache_size=2GB
+      -c max_connections=30
+      -c wal_buffers=8MB
+      -c random_page_cost=1.1
+      -c jit=off
 
   redis:
     restart: always
@@ -16,6 +26,15 @@ services:
       - "127.0.0.1:9003:9001"
 
   backend:
+    restart: always
+    volumes: []
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --limit-concurrency 16
+
+  celery-worker:
+    restart: always
+    volumes: []
+
+  frontend:
     restart: always
     volumes: []
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
