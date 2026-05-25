@@ -50,18 +50,7 @@ def request_cancel():
 
 
 def compose_auction_text(row: dict) -> str:
-    parts: list[str] = []
-    if row.get("name"):
-        parts.append(row["name"])
-    if row.get("family"):
-        parts.append(f"Family: {row['family']}")
-    if row.get("locality"):
-        parts.append(f"Locality: {row['locality']}")
-    if row.get("size"):
-        parts.append(f"Size: {row['size']}")
-    if row.get("note"):
-        parts.append(f"Note: {row['note']}")
-    return " — ".join(parts)
+    return (row.get("name") or "").strip()
 
 
 async def pick_active_embedding_config(conn: asyncpg.Connection) -> Optional[dict]:
