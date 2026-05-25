@@ -1555,3 +1555,48 @@ curl -X POST /api/v1/admin/cleanup-vectors -d '{"target":"auctions"}'
 | `scripts/dev.sh` | `cmd_nuke` 追加删除 stale schedule 文件 |
 
 ---
+
+## 2026-05-25: 彻底消除 celery 静默自动启动
+
+### 问题
+
+之前的 `beat_schedule={}` 修复后，向量化任务仍然后台自动启动烧 token。经过全代码库审计（8 个并行 explore agent + 手动审查），发现：
+
+### 根因
+
+| # | 根因 | 机制 |
+|---|------|------|
+| 1 | `celerybeat-schedule` 持久化 DBM 文件残留 | Celery Beat `PersistentScheduler` 从磁盘文件读取旧调度条目，忽略代码中 `beat_schedule={}`。文件通过 `./backend:/app` volume mount 在容器重启间持久化，导致旧的 `scrape-auctions-hourly` / `download-sold-images-half-hourly` 持续触发 |
+| 2 | `task_acks_late=True` 全局 | 任务执行完才确认，worker 重启/崩溃后未确认任务重新入队，静默自动恢复执行 |
+| 3 | `scrape_incremental` / `download_sold_images` 缺 `max_retries` | 无重试上限，崩溃后无限循环重投 |
+| 4 | `broker_connection_max_retries=None` | Worker 永不会放弃重连 Redis |
+
+### 排除项（已验证无自动触发）
+
+- ✅ Celery beat 代码调度（`beat_schedule={}` 已空）
+- ✅ Django signals（FastAPI 项目无此机制）
+- ✅ API GET 端点自动触发（全部 `.delay()` 调用均在 POST + admin 认证下）
+- ✅ 应用启动（无 `AppConfig.ready`、middleware、管理命令）
+- ✅ 前端 `onMounted`（所有 task-creating API 调用均为显式按钮点击）
+- ✅ Model save/delete hooks（零个）
+- ✅ `autoretry_for` / `self.retry()`（零个）
+- ✅ `chain/group/chord`（零个）
+
+### 修复
+
+| 文件 | 改动 |
+|------|------|
+| `backend/celerybeat-schedule` | **删除** — 持久化文件包含旧的 beat 调度条目 |
+| `backend/app/tasks/celery_app.py` | `task_acks_late=False`（全局关闭，不再静默恢复任务）；`broker_connection_max_retries=5`（有限重试） |
+| `backend/app/tasks/auction_scraper.py` | `scrape_incremental` 添加 `max_retries=0` |
+| `backend/app/tasks/image_downloader.py` | `download_sold_images` 添加 `max_retries=0` |
+| `docker-compose.yml` | **注释掉** `celery-beat` 服务（schedule 为空无意义，且 stale DBM 文件是自动启动根因） |
+| `docker-compose.prod.yml` | **注释掉** `celery-beat` 覆盖配置 |
+| `backend/Dockerfile` | 构建时 `RUN rm -f celerybeat-schedule*` 防止残留文件泄露进镜像 |
+| `scripts/dev.sh` | `cmd_rebuild`/`cmd_restart`/`cmd_prod_restart` 移除所有 `celery-beat` 引用 |
+
+### 验证
+
+- `celerybeat-schedule` 文件已删除，`.gitignore` 已有 `celerybeat-schedule*` 规则
+- 所有 7 个文件 LSP 诊断无新增错误
+- 需要执行 `./dev restart` 重建容器使 docker-compose 变更生效
