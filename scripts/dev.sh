@@ -413,6 +413,7 @@ cmd_test() {
 cmd_prod_up() {
   ensure_infra
   ensure_base
+  rm -f "$ROOT/backend/celerybeat-schedule"*
   log "starting production stack..."
   $COMPOSE_PROD up -d --build
   ok "production stack started"
@@ -435,6 +436,7 @@ cmd_prod_nuke() {
   local confirm; read -r confirm
   [[ "$confirm" == "prod-nuke" ]] || die "aborted"
   $COMPOSE_PROD down --remove-orphans 2>/dev/null || true
+  rm -f "$ROOT/backend/celerybeat-schedule"*
   for v in "${VOLUMES[@]}"; do docker volume rm -f "$v" 2>/dev/null || true; done
   docker network rm "$NETWORK_NAME" 2>/dev/null || true
   docker image rm -f "$BASE_IMAGE" 2>/dev/null || true
