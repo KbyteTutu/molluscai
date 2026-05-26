@@ -10,9 +10,7 @@ const routes = [
   },
   {
     path: '/',
-    name: 'Home',
-    component: () => import('@/views/HomeView.vue'),
-    meta: { requiresAuth: false }
+    redirect: '/taxa',
   },
   {
     path: '/auctions/:itemNo',
@@ -132,9 +130,9 @@ router.beforeEach((to, from, next) => {
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
   } else if (to.meta.requiresGuest && authStore.isAuthenticated) {
-    next({ name: 'Home' })
+    next({ path: '/' })
   } else if (to.meta.requiresSuperadmin && authStore.currentUser?.role !== 'superadmin') {
-    next({ name: 'Home' })
+    next({ path: '/' })
   } else {
     next()
   }

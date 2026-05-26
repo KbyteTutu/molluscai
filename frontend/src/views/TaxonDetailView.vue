@@ -139,7 +139,7 @@ const sortedVernaculars = computed(() => {
   })
 })
 
-const COLLAPSE_LIMIT = 50
+const COLLAPSE_LIMIT = 12
 const showAllSynonyms = ref(false)
 const showAllVernaculars = ref(false)
 const showAllDistributions = ref(false)
