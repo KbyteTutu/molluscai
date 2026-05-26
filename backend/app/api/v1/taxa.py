@@ -394,11 +394,12 @@ async def get_taxon_inaturalist(
         },
     )
 
-    # sync vernaculars
+    # sync vernaculars — iNat overwrites same-language names from all sources
     if result.vernaculars:
+        langs = list({v["language_code"] for v in result.vernaculars})
         await db.execute(
-            text("DELETE FROM taxa_vernaculars WHERE aphia_id = :id AND source = 'inaturalist'"),
-            {"id": aphia_id},
+            text("DELETE FROM taxa_vernaculars WHERE aphia_id = :id AND UPPER(language_code) = ANY(:langs)"),
+            {"id": aphia_id, "langs": langs},
         )
         for v in result.vernaculars:
             await db.execute(
