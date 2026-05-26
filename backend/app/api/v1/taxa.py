@@ -309,62 +309,115 @@ async def get_taxon_inaturalist(
 
     scientific_name = record["scientificname"]
 
-    # check if already synced from iNaturalist
-    already_synced = await db.execute(
-        text("SELECT COUNT(*) FROM taxa_vernaculars WHERE aphia_id = :id AND source = 'inaturalist'"),
-        {"id": aphia_id},
-    )
-    needs_sync = already_synced.scalar() == 0
-
-    if needs_sync:
-        result = await inat_lookup(scientific_name)
-        if result.found and result.vernaculars:
-            await db.execute(
-                text("DELETE FROM taxa_vernaculars WHERE aphia_id = :id AND source = 'inaturalist'"),
-                {"id": aphia_id},
-            )
-            for v in result.vernaculars:
-                await db.execute(
-                    text("""
-                        INSERT INTO taxa_vernaculars (aphia_id, vernacular, language_code, source)
-                        VALUES (:aphia_id, :vernacular, :language_code, 'inaturalist')
-                        ON CONFLICT DO NOTHING
-                    """),
-                    {
-                        "aphia_id": aphia_id,
-                        "vernacular": v["vernacular"],
-                        "language_code": v["language_code"],
-                    },
-                )
-            await db.commit()
-
-        return TaxonInaturalist(
-            found=result.found,
-            inat_id=result.inat_id,
-            preferred_common_name=result.preferred_common_name,
-            observations_count=result.observations_count,
-            wikipedia_url=result.wikipedia_url,
-            wikipedia_summary=result.wikipedia_summary,
-            image_url=result.image_url,
-            conservation_status=result.conservation_status,
-            vernaculars=[TaxonVernacular(**v) for v in result.vernaculars],
-        )
-
-    # already synced — return vernaculars from DB + re-fetch metadata from iNat
-    result = await inat_lookup(scientific_name)
-    vernacular_rows = await db.execute(
+    # check if metadata already cached
+    meta_row = await db.execute(
         text("""
-            SELECT vernacular, language_code
-            FROM taxa_vernaculars
-            WHERE aphia_id = :id AND source = 'inaturalist'
-            ORDER BY language_code, vernacular
+            SELECT found, inat_id, preferred_common_name, observations_count,
+                   wikipedia_url, wikipedia_summary, image_url, conservation_status
+            FROM taxa_inaturalist WHERE aphia_id = :id
         """),
         {"id": aphia_id},
     )
-    vernaculars = [TaxonVernacular.model_validate(dict(r._mapping)) for r in vernacular_rows]
+    meta = meta_row.mappings().first()
+
+    if meta:
+        if not meta["found"]:
+            return TaxonInaturalist()
+
+        # cached — read vernaculars from DB, no API call
+        vernacular_rows = await db.execute(
+            text("""
+                SELECT vernacular, language_code
+                FROM taxa_vernaculars
+                WHERE aphia_id = :id AND source = 'inaturalist'
+                ORDER BY language_code, vernacular
+            """),
+            {"id": aphia_id},
+        )
+        vernaculars = [TaxonVernacular.model_validate(dict(r._mapping)) for r in vernacular_rows]
+        return TaxonInaturalist(
+            found=True,
+            inat_id=meta["inat_id"],
+            preferred_common_name=meta["preferred_common_name"],
+            observations_count=meta["observations_count"],
+            wikipedia_url=meta["wikipedia_url"],
+            wikipedia_summary=meta["wikipedia_summary"],
+            image_url=meta["image_url"],
+            conservation_status=meta["conservation_status"],
+            vernaculars=vernaculars,
+        )
+
+    # first sync — call iNaturalist API
+    result = await inat_lookup(scientific_name)
+    if not result.found:
+        await db.execute(
+            text("""
+                INSERT INTO taxa_inaturalist (aphia_id, found, synced_at)
+                VALUES (:id, FALSE, now())
+                ON CONFLICT (aphia_id) DO UPDATE SET
+                    found = FALSE, synced_at = now()
+            """),
+            {"id": aphia_id},
+        )
+        await db.commit()
+        return TaxonInaturalist()
+
+    # store metadata
+    await db.execute(
+        text("""
+            INSERT INTO taxa_inaturalist
+                (aphia_id, found, inat_id, preferred_common_name, observations_count,
+                 wikipedia_url, wikipedia_summary, image_url, conservation_status, raw)
+            VALUES (:aphia_id, TRUE, :inat_id, :pref, :obs, :wiki_url, :wiki_sum, :img, :cons, :raw)
+            ON CONFLICT (aphia_id) DO UPDATE SET
+                found = TRUE,
+                inat_id = EXCLUDED.inat_id,
+                preferred_common_name = EXCLUDED.preferred_common_name,
+                observations_count = EXCLUDED.observations_count,
+                wikipedia_url = EXCLUDED.wikipedia_url,
+                wikipedia_summary = EXCLUDED.wikipedia_summary,
+                image_url = EXCLUDED.image_url,
+                conservation_status = EXCLUDED.conservation_status,
+                raw = EXCLUDED.raw,
+                synced_at = now()
+        """),
+        {
+            "aphia_id": aphia_id,
+            "inat_id": result.inat_id,
+            "pref": result.preferred_common_name,
+            "obs": result.observations_count,
+            "wiki_url": result.wikipedia_url,
+            "wiki_sum": result.wikipedia_summary,
+            "img": result.image_url,
+            "cons": result.conservation_status,
+            "raw": None,
+        },
+    )
+
+    # sync vernaculars
+    if result.vernaculars:
+        await db.execute(
+            text("DELETE FROM taxa_vernaculars WHERE aphia_id = :id AND source = 'inaturalist'"),
+            {"id": aphia_id},
+        )
+        for v in result.vernaculars:
+            await db.execute(
+                text("""
+                    INSERT INTO taxa_vernaculars (aphia_id, vernacular, language_code, source)
+                    VALUES (:aphia_id, :vernacular, :language_code, 'inaturalist')
+                    ON CONFLICT DO NOTHING
+                """),
+                {
+                    "aphia_id": aphia_id,
+                    "vernacular": v["vernacular"],
+                    "language_code": v["language_code"],
+                },
+            )
+
+    await db.commit()
 
     return TaxonInaturalist(
-        found=result.found,
+        found=True,
         inat_id=result.inat_id,
         preferred_common_name=result.preferred_common_name,
         observations_count=result.observations_count,
@@ -372,5 +425,5 @@ async def get_taxon_inaturalist(
         wikipedia_summary=result.wikipedia_summary,
         image_url=result.image_url,
         conservation_status=result.conservation_status,
-        vernaculars=vernaculars,
+        vernaculars=[TaxonVernacular(**v) for v in result.vernaculars],
     )

@@ -105,6 +105,20 @@ CREATE INDEX IF NOT EXISTS idx_vern_aphia    ON taxa_vernaculars (aphia_id);
 CREATE INDEX IF NOT EXISTS idx_vern_lower    ON taxa_vernaculars (lower(vernacular));
 CREATE INDEX IF NOT EXISTS idx_vern_trgm     ON taxa_vernaculars USING GIN (vernacular gin_trgm_ops);
 
+CREATE TABLE IF NOT EXISTS taxa_inaturalist (
+    aphia_id             INTEGER PRIMARY KEY REFERENCES taxa(aphia_id) ON DELETE CASCADE,
+    inat_id              INTEGER,
+    found                BOOLEAN NOT NULL DEFAULT TRUE,
+    preferred_common_name TEXT,
+    observations_count   INTEGER,
+    wikipedia_url        TEXT,
+    wikipedia_summary    TEXT,
+    image_url            TEXT,
+    conservation_status  TEXT,
+    raw                  JSONB,
+    synced_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS taxa_sources (
     id              BIGSERIAL PRIMARY KEY,
     aphia_id        INTEGER NOT NULL REFERENCES taxa(aphia_id) ON DELETE CASCADE,

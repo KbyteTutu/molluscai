@@ -8,8 +8,6 @@ import httpx
 
 log = logging.getLogger("inaturalist")
 
-from app.config import settings
-
 INAT_BASE = "https://api.inaturalist.org/v1"
 HEADERS = {
     "User-Agent": "MolluscAI/1.0 (molluscai.com)",
