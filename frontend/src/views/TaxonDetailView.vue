@@ -167,6 +167,8 @@ const correctionOpen = ref(false)
 const correctionField = ref('')
 const correctionCustomField = ref('')
 const correctionVernacularIdx = ref(-1)
+const correctionNewVernacular = ref(false)
+const correctionNewVernacularLang = ref('')
 const correctionCurrent = ref('')
 const correctionSuggested = ref('')
 const correctionNote = ref('')
@@ -192,6 +194,8 @@ function openCorrection() {
   correctionField.value = ''
   correctionCustomField.value = ''
   correctionVernacularIdx.value = -1
+  correctionNewVernacular.value = false
+  correctionNewVernacularLang.value = ''
   correctionCurrent.value = ''
   correctionSuggested.value = ''
   correctionNote.value = ''
@@ -202,6 +206,8 @@ function onSelectField(field) {
   correctionField.value = field
   correctionCustomField.value = ''
   correctionVernacularIdx.value = -1
+  correctionNewVernacular.value = false
+  correctionNewVernacularLang.value = ''
   if (field === 'other' || field === 'vernaculars') {
     correctionCurrent.value = ''
   } else if (taxon.value) {
@@ -210,6 +216,13 @@ function onSelectField(field) {
 }
 
 function onSelectVernacular(idx) {
+  if (idx === -2) {
+    correctionNewVernacular.value = true
+    correctionVernacularIdx.value = -1
+    correctionCurrent.value = ''
+    return
+  }
+  correctionNewVernacular.value = false
   correctionVernacularIdx.value = idx
   const v = sortedVernaculars.value[idx]
   if (v) {
@@ -220,6 +233,9 @@ function onSelectVernacular(idx) {
 const effectiveFieldName = () => {
   if (correctionField.value === 'other') return correctionCustomField.value.trim()
   if (correctionField.value === 'vernaculars') {
+    if (correctionNewVernacular.value && correctionNewVernacularLang.value) {
+      return `vernacular:${correctionNewVernacularLang.value}`
+    }
     const v = sortedVernaculars.value[correctionVernacularIdx.value]
     if (v) return `vernacular:${v.language_code}`
     return ''
@@ -514,12 +530,24 @@ async function submitCorrection() {
               class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option :value="-1" disabled selected>请选择</option>
+              <option :value="-2">+ 新增俗名 (New vernacular)</option>
               <option
                 v-for="(v, idx) in sortedVernaculars"
                 :key="idx"
                 :value="idx"
               >{{ v.vernacular }} ({{ v.language_code }}{{ v.language ? ', ' + v.language : '' }})</option>
             </select>
+            <div v-if="correctionNewVernacular" class="mt-3">
+              <label class="text-sm font-medium mb-1.5 block">语言</label>
+              <select
+                v-model="correctionNewVernacularLang"
+                class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="" disabled selected>请选择语言</option>
+                <option value="CHN">中文 (CHN)</option>
+                <option value="ENG">英文 (ENG)</option>
+              </select>
+            </div>
           </div>
 
           <div v-if="correctionField === 'other'">
