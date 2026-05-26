@@ -1719,3 +1719,14 @@ ALTER TABLE taxa_vernaculars ADD COLUMN IF NOT EXISTS source TEXT;
 - 前端 `npm run build` 通过（TaxonDetailView 22.69kB gzip 7.21kB）
 - 后端所有 Python 文件 AST 语法检查通过
 - LSP 诊断：无新增错误
+
+### 修复：缓存分支优化（2026-05-26）
+
+**问题**：已缓存的物种每次仍调 iNaturalist API 获取元数据，导致 ~1.4s 延迟。
+
+**修复**：
+- 新建 `taxa_inaturalist` 表存储元数据（`inat_id`、`image_url`、`observations_count` 等）
+- 首次查询：调 API → 写入元数据 + 俗名到 DB
+- 后续查询：直接从 DB 读取，零 API 调用
+
+**效果**：缓存命中 1.37s → 0.02s（65x），未匹配 0.68s → 0.03s（26x）。
