@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     SILICONFLOW_API_KEY: Optional[str] = None
     ZHIPU_API_KEY: Optional[str] = None
 
+    # iNaturalist
+    INATURALIST_API_KEY: Optional[str] = None
+
     # MolluscaBase
     MOLLUSCABASE_API_URL: str = "https://api.molluscabase.org"
 

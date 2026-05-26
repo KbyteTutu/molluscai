@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { taxaApi, correctionApi } from '@/api'
-import { ArrowLeft, ExternalLink, History, Languages, Map, GitBranch, Network, Pencil } from 'lucide-vue-next'
+import { ArrowLeft, ExternalLink, Globe, History, Languages, Map, GitBranch, Network, Pencil } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
@@ -27,6 +27,7 @@ const distributions = ref([])
 const children = ref([])
 const classification = ref([])
 const externalIds = ref([])
+const inaturalist = ref(null)
 const zhNames = ref({})
 
 async function load() {
@@ -39,6 +40,7 @@ async function load() {
   children.value = []
   classification.value = []
   externalIds.value = []
+  inaturalist.value = null
   showAllSynonyms.value = false
   showAllVernaculars.value = false
   showAllDistributions.value = false
@@ -54,13 +56,14 @@ async function load() {
   }
   loading.value = false
   const settle = (promise) => promise.catch(() => null)
-  const [s, v, d, c, cls, x] = await Promise.all([
+  const [s, v, d, c, cls, x, iNat] = await Promise.all([
     settle(taxaApi.getSynonyms(id)),
     settle(taxaApi.getVernaculars(id)),
     settle(taxaApi.getDistributions(id)),
     settle(taxaApi.getChildren(id, { accepted_only: true })),
     settle(taxaApi.getClassification(id)),
-    settle(taxaApi.getExternalIds(id))
+    settle(taxaApi.getExternalIds(id)),
+    settle(taxaApi.getInaturalist(id))
   ])
   if (s) synonyms.value = s.data
   if (v) vernaculars.value = v.data
@@ -68,6 +71,7 @@ async function load() {
   if (c) children.value = c.data
   if (cls) classification.value = cls.data
   if (x) externalIds.value = x.data
+  if (iNat?.data?.found) inaturalist.value = iNat.data
   if (taxon.value?.rank_names_zh && !Object.keys(zhNames.value).length) {
     zhNames.value = taxon.value.rank_names_zh
   }
@@ -349,6 +353,42 @@ async function submitCorrection() {
           <Button variant="ghost" size="sm" class="w-full text-xs text-muted-foreground" @click="showAllVernaculars = !showAllVernaculars">
             {{ showAllVernaculars ? '收起' : `展开全部 (${sortedVernaculars.length})` }}
           </Button>
+        </div>
+      </Card>
+
+      <Card v-if="inaturalist?.found" class="p-6">
+        <div class="flex items-center gap-2 mb-3 text-[10px] uppercase tracking-widest text-muted-foreground">
+          <Globe class="size-3.5" /> iNaturalist
+          <span v-if="inaturalist.observations_count" class="text-muted-foreground/60">
+            ({{ inaturalist.observations_count.toLocaleString() }} observations)
+          </span>
+        </div>
+        <div class="flex gap-4">
+          <img
+            v-if="inaturalist.image_url"
+            :src="inaturalist.image_url"
+            :alt="inaturalist.preferred_common_name || 'iNaturalist photo'"
+            class="w-24 h-24 rounded-lg object-cover shrink-0"
+          />
+          <div class="flex-1 min-w-0 space-y-2 text-sm">
+            <div v-if="inaturalist.preferred_common_name" class="flex items-baseline gap-2">
+              <span class="text-xs text-muted-foreground shrink-0">Common name:</span>
+              <span class="font-medium">{{ inaturalist.preferred_common_name }}</span>
+            </div>
+            <div v-if="inaturalist.conservation_status" class="flex items-baseline gap-2">
+              <span class="text-xs text-muted-foreground shrink-0">Status:</span>
+              <Badge variant="secondary" class="text-[10px]">{{ inaturalist.conservation_status }}</Badge>
+            </div>
+            <div v-if="inaturalist.wikipedia_summary" class="text-xs text-muted-foreground line-clamp-3 leading-relaxed" v-html="inaturalist.wikipedia_summary" />
+          </div>
+        </div>
+        <div class="flex gap-2 mt-3">
+          <a :href="`https://www.inaturalist.org/taxa/${inaturalist.inat_id}`" target="_blank" rel="noopener noreferrer">
+            <Button variant="default" size="sm"><ExternalLink class="size-3.5" /> 在 iNaturalist 查看</Button>
+          </a>
+          <a v-if="inaturalist.wikipedia_url" :href="inaturalist.wikipedia_url" target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" size="sm"><ExternalLink class="size-3.5" /> Wikipedia</Button>
+          </a>
         </div>
       </Card>
 

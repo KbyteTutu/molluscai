@@ -106,6 +106,7 @@ export const taxaApi = {
   getChildren: (aphiaId, params) => apiClient.get(`/taxa/${aphiaId}/children`, { params }),
   getClassification: (aphiaId) => apiClient.get(`/taxa/${aphiaId}/classification`),
   getExternalIds: (aphiaId) => apiClient.get(`/taxa/${aphiaId}/external-ids`),
+  getInaturalist: (aphiaId) => apiClient.get(`/taxa/${aphiaId}/inaturalist`),
   rankNamesZh: () => apiClient.get('/taxa/rank-names-zh'),
 }
 

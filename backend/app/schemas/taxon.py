@@ -94,3 +94,17 @@ class TaxonClassificationStep(BaseModel):
 class TaxonExternalId(BaseModel):
     source: str
     external_id: str
+
+
+class TaxonInaturalist(BaseModel):
+    found: bool = False
+    inat_id: Optional[int] = None
+    preferred_common_name: Optional[str] = None
+    observations_count: Optional[int] = None
+    wikipedia_url: Optional[str] = None
+    wikipedia_summary: Optional[str] = None
+    image_url: Optional[str] = None
+    conservation_status: Optional[str] = None
+    vernaculars: list[TaxonVernacular] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
