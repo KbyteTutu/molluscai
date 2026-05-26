@@ -45,6 +45,7 @@ async function load() {
   showAllVernaculars.value = false
   showAllDistributions.value = false
   showAllChildren.value = false
+  showAllInatVernaculars.value = false
   const id = route.params.aphiaId
   try {
     const { data } = await taxaApi.getDetail(id)
@@ -140,10 +141,12 @@ const sortedVernaculars = computed(() => {
 })
 
 const COLLAPSE_LIMIT = 50
+const INAT_COLLAPSE_LIMIT = 15
 const showAllSynonyms = ref(false)
 const showAllVernaculars = ref(false)
 const showAllDistributions = ref(false)
 const showAllChildren = ref(false)
+const showAllInatVernaculars = ref(false)
 
 const visibleSynonyms = computed(() =>
   showAllSynonyms.value ? synonyms.value : synonyms.value.slice(0, COLLAPSE_LIMIT)
@@ -156,6 +159,23 @@ const visibleDistributions = computed(() =>
 )
 const visibleChildren = computed(() =>
   showAllChildren.value ? children.value : children.value.slice(0, COLLAPSE_LIMIT)
+)
+
+const sortedInatVernaculars = computed(() => {
+  if (!inaturalist.value?.vernaculars) return []
+  return [...inaturalist.value.vernaculars].sort((a, b) => {
+    const aChn = a.language_code === 'CHN'
+    const bChn = b.language_code === 'CHN'
+    if (aChn && !bChn) return -1
+    if (!aChn && bChn) return 1
+    return 0
+  })
+})
+
+const visibleInatVernaculars = computed(() =>
+  showAllInatVernaculars.value
+    ? sortedInatVernaculars.value
+    : sortedInatVernaculars.value.slice(0, INAT_COLLAPSE_LIMIT)
 )
 
 // --- 冈瓦纳英汉博物词典 已下线（ECS 出口无法访问 ganvana.com）---
@@ -390,6 +410,26 @@ async function submitCorrection() {
             <Button variant="outline" size="sm"><ExternalLink class="size-3.5" /> Wikipedia</Button>
           </a>
         </div>
+        <div v-if="sortedInatVernaculars.length" class="mt-3 pt-3 border-t border-dashed">
+          <div class="flex items-center gap-2 mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">
+            <Languages class="size-3" /> 来自 iNaturalist 的俗名 <span class="text-muted-foreground/60">({{ sortedInatVernaculars.length }})</span>
+          </div>
+          <ul class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+            <li
+              v-for="(v, idx) in visibleInatVernaculars"
+              :key="`inat-${v.vernacular}-${idx}`"
+              class="flex items-baseline justify-between gap-2"
+            >
+              <span>{{ v.vernacular }}</span>
+              <Badge variant="outline" class="text-[10px] uppercase tracking-wider shrink-0">{{ v.language_code }}</Badge>
+            </li>
+          </ul>
+          <div v-if="sortedInatVernaculars.length > INAT_COLLAPSE_LIMIT" class="mt-2 pt-2 border-t border-dashed">
+            <Button variant="ghost" size="sm" class="w-full text-xs text-muted-foreground" @click="showAllInatVernaculars = !showAllInatVernaculars">
+              {{ showAllInatVernaculars ? '收起' : `展开全部 (${sortedInatVernaculars.length})` }}
+            </Button>
+          </div>
+        </div>
       </Card>
 
       <div v-if="taxon.is_marine !== null || taxon.is_freshwater !== null">
@@ -400,7 +440,7 @@ async function submitCorrection() {
             <Badge v-if="taxon.is_brackish" variant="secondary">半咸 Brackish</Badge>
             <Badge v-if="taxon.is_freshwater" variant="secondary">淡水 Freshwater</Badge>
             <Badge v-if="taxon.is_terrestrial" variant="secondary">陆生 Terrestrial</Badge>
-          </div>
+        </div>
         </Card>
       </div>
 
