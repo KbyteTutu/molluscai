@@ -144,6 +144,28 @@ ensure_env() {
   ok ".env validated"
 }
 
+ensure_inat_schema() {
+  require_running "$PG_CONTAINER"
+  log "ensuring iNaturalist schema..."
+  docker exec "$PG_CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -c "
+    ALTER TABLE taxa_vernaculars ADD COLUMN IF NOT EXISTS source TEXT;
+    CREATE TABLE IF NOT EXISTS taxa_inaturalist (
+        aphia_id             INTEGER PRIMARY KEY REFERENCES taxa(aphia_id) ON DELETE CASCADE,
+        inat_id              INTEGER,
+        found                BOOLEAN NOT NULL DEFAULT TRUE,
+        preferred_common_name TEXT,
+        observations_count   INTEGER,
+        wikipedia_url        TEXT,
+        wikipedia_summary    TEXT,
+        image_url            TEXT,
+        conservation_status  TEXT,
+        raw                  JSONB,
+        synced_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  " >/dev/null 2>&1
+  ok "iNaturalist schema ready"
+}
+
 ensure_infra() {
   ensure_env
   ensure_network
@@ -175,6 +197,7 @@ cmd_up() {
   $COMPOSE up -d --build
   ok "stack started"
   cmd_status
+  ensure_inat_schema
 }
 
 cmd_down() {
@@ -422,6 +445,7 @@ cmd_prod_up() {
   echo
   ok "next step: import data with"
   ok "    ./dev prod-import data_import/worms_mollusca.sqlite[.gz] data_import/postgres_backup.sql[.gz]"
+  ensure_inat_schema
 }
 
 cmd_prod_nuke() {
