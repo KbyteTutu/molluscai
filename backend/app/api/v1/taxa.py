@@ -300,7 +300,7 @@ async def get_taxon_inaturalist(
     _: User = Depends(get_current_user),
 ):
     row = await db.execute(
-        text("SELECT scientificname FROM taxa WHERE aphia_id = :id"),
+        text("SELECT scientificname, rank FROM taxa WHERE aphia_id = :id"),
         {"id": aphia_id},
     )
     record = row.mappings().first()
@@ -308,6 +308,7 @@ async def get_taxon_inaturalist(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Taxon not found")
 
     scientific_name = record["scientificname"]
+    taxon_rank = record["rank"]
 
     # check if metadata already cached
     meta_row = await db.execute(
@@ -348,7 +349,7 @@ async def get_taxon_inaturalist(
         )
 
     # first sync — call iNaturalist API
-    result = await inat_lookup(scientific_name)
+    result = await inat_lookup(scientific_name, taxon_rank)
     if not result.found:
         await db.execute(
             text("""

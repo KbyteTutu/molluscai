@@ -51,6 +51,38 @@ _LOCALE_MAP: dict[str, str] = {
     "eu": "EUS",
 }
 
+# our rank → iNaturalist rank
+_RANK_MAP: dict[str, str] = {
+    "Species": "species",
+    "Subspecies": "subspecies",
+    "Genus": "genus",
+    "Subgenus": "subgenus",
+    "Family": "family",
+    "Subfamily": "subfamily",
+    "Superfamily": "superfamily",
+    "Order": "order",
+    "Suborder": "suborder",
+    "Infraorder": "infraorder",
+    "Superorder": "superorder",
+    "Class": "class",
+    "Subclass": "subclass",
+    "Infraclass": "infraclass",
+    "Phylum": "phylum",
+    "Subphylum": "subphylum",
+    "Kingdom": "kingdom",
+    "Tribe": "tribe",
+    "Variety": "variety",
+    "Forma": "form",
+}
+
+RANKS_WITH_VERNACULARS = frozenset(["species", "genus", "family"])
+
+
+def _map_rank(db_rank: str | None) -> str | None:
+    if not db_rank:
+        return None
+    return _RANK_MAP.get(db_rank)
+
 
 def _locale_to_lang(locale: str) -> str:
     """Map iNaturalist locale to our 3-letter language_code."""
@@ -70,13 +102,14 @@ class InatResult:
     vernaculars: list[dict[str, str]] = field(default_factory=list)
 
 
-async def search_exact_match(scientific_name: str) -> Optional[dict]:
-    """Search iNaturalist for an exact scientific name match at species rank."""
-    params = {
+async def search_exact_match(scientific_name: str, rank: str | None = None) -> Optional[dict]:
+    """Search iNaturalist for an exact scientific name match at the given rank."""
+    params: dict[str, str | int] = {
         "q": scientific_name,
-        "rank": "species",
         "per_page": 10,
     }
+    if rank:
+        params["rank"] = rank
     try:
         async with httpx.AsyncClient(headers=HEADERS, timeout=15.0) as client:
             resp = await client.get(f"{INAT_BASE}/taxa", params=params)
@@ -134,9 +167,10 @@ def extract_vernaculars(taxon: dict) -> list[dict[str, str]]:
     return out
 
 
-async def lookup(scientific_name: str) -> InatResult:
+async def lookup(scientific_name: str, rank: str | None = None) -> InatResult:
     """Full iNaturalist lookup: search → detail → vernacular extraction."""
-    taxon = await search_exact_match(scientific_name)
+    inat_rank = _map_rank(rank)
+    taxon = await search_exact_match(scientific_name, inat_rank)
     if not taxon:
         return InatResult()
 
