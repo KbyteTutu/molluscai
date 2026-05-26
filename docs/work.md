@@ -1659,3 +1659,63 @@ curl -X POST /api/v1/admin/cleanup-vectors -d '{"target":"auctions"}'
 - 首次请求正常查询 DB，后续请求从 Redis 返回（延迟 <5ms）
 - LSP 诊断无新增错误
 - `redis>=5.0` 已包含 `redis.asyncio` 支持
+
+---
+
+## 2026-05-26: iNaturalist 集成
+
+### 功能
+
+物种详情页新增 iNaturalist 栏目。用户查看物种时，后端自动调用 iNaturalist API
+查找学名精确匹配的 taxon，同步俗名到本地数据库，前端展示照片、观察数、
+Wikipedia 摘要和跳转按钮。iNaturalist 名称具有最高优先级，会替换同语言现有俗名。
+
+### 实现
+
+**懒加载同步模型**：
+1. 用户打开物种详情页 → 前端请求 `GET /taxa/{aphia_id}/inaturalist`
+2. 后端检查是否已同步（`taxa_vernaculars.source = 'inaturalist'`）
+3. 未同步 → 调用 iNaturalist API（search → detail → vernaculars），写入 DB
+4. 已同步 → 返回 DB 中的俗名 + 实时 iNat 元数据
+
+**iNaturalist API**：
+- v1 API（非 v2）：`/v1/taxa?q={name}&rank=species` + `/v1/taxa/{id}?all_names=true`
+- 无需认证，限速 60 req/min，需自订 User-Agent
+- 精确匹配：API 返回候选列表后客户端 `name.lower()` 比对
+
+**俗名同步策略**：
+- 新增 `taxa_vernaculars.source` 列追踪来源（`inaturalist` / `ganvana` / `manual`）
+- 同步时：`DELETE ... WHERE source='inaturalist'` → 批量 `INSERT` 新名称
+- `names` 数组中只取 `is_valid=true` 且 `locale != 'sci'` 的条目
+- iNat locale → 3-letter 语言码映射（zh→CHN, en→ENG, ja→JPN 等 30+ 语言）
+
+**前端 iNaturalist Card**：
+- 显示位置：俗名卡片之后、生境卡片之前
+- Photo（来自 `default_photo.medium_url`）、Common name、Conservation status
+- Wikipedia 摘要（line-clamp-3）、观察数
+- 两个按钮：在 iNaturalist 查看 + Wikipedia（使用标准 `ExternalLink` 模式）
+
+### 文件
+
+| 文件 | 改动 |
+|------|------|
+| `backend/app/services/inaturalist.py` | **新建** — iNat API 搜索、详情、俗名提取、精确匹配 |
+| `backend/app/schemas/taxon.py` | 新增 `TaxonInaturalist` schema |
+| `backend/app/api/v1/taxa.py` | 新增 `GET /{aphia_id}/inaturalist` 端点 |
+| `backend/app/config.py` | 新增 `INATURALIST_API_KEY` 配置项 |
+| `infra/postgres/init/04-taxa.sql` | 新增 `ALTER TABLE taxa_vernaculars ADD COLUMN source TEXT` |
+| `frontend/src/api/index.js` | 新增 `taxaApi.getInaturalist()` |
+| `frontend/src/views/TaxonDetailView.vue` | 新增 iNaturalist Card 章节 |
+
+### 部署注意事项
+
+```sql
+-- 对已有数据库运行此迁移
+ALTER TABLE taxa_vernaculars ADD COLUMN IF NOT EXISTS source TEXT;
+```
+
+### 验证
+
+- 前端 `npm run build` 通过（TaxonDetailView 22.69kB gzip 7.21kB）
+- 后端所有 Python 文件 AST 语法检查通过
+- LSP 诊断：无新增错误
