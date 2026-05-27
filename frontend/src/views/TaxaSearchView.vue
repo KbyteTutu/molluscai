@@ -37,7 +37,16 @@ const error = ref('')
 const hasSearched = ref(false)
 
 const RANKS = ['', 'Species', 'Genus', 'Family', 'Order', 'Class', 'Phylum']
-const STATUSES = ['', 'accepted', 'unaccepted', 'superseded combination', 'nomen dubium', 'taxon inquirendum']
+const statuses = ref([])
+
+onMounted(async () => {
+  try {
+    const { data } = await taxaApi.getStatuses()
+    statuses.value = data.map(s => s.status)
+  } catch (_) {
+    statuses.value = ['accepted', 'unaccepted']
+  }
+})
 
 const pageInfo = computed(() => {
   if (total.value === 0) return ''
@@ -91,7 +100,6 @@ function prevPage() {
   runSearch(false)
 }
 
-onMounted(() => {})
 </script>
 
 <template>
@@ -149,7 +157,8 @@ onMounted(() => {})
           <label class="flex items-center gap-2">
             <span class="text-xs text-muted-foreground shrink-0 w-10">状态</span>
             <select v-model="status" @change="runSearch(true)" class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs">
-              <option v-for="s in STATUSES" :key="s" :value="s">{{ s || '全部' }}</option>
+              <option value="">全部</option>
+              <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
             </select>
           </label>
           <label class="flex items-center gap-2">

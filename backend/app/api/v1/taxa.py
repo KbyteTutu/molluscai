@@ -43,6 +43,17 @@ async def _load_rank_names_zh() -> dict[str, str]:
     return _rank_names_zh
 
 
+@router.get("/statuses")
+async def list_statuses(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    rows = await db.execute(
+        text("SELECT status, COUNT(*) as n FROM taxa WHERE status IS NOT NULL GROUP BY status ORDER BY n DESC")
+    )
+    return [{"status": r._mapping["status"], "count": r._mapping["n"]} for r in rows]
+
+
 @router.get("/search", response_model=TaxonSearchResponse)
 async def search_taxa(
     request: Request,

@@ -168,9 +168,15 @@ async def _lexical_with_match(
         _consider(int(r[0]), float(r[3] or 0.0), r[4] or "",
                   {"kind": "vernacular", "term": r[1], "language": r[2]})
 
+    q_lower = q.strip().lower()
+
     return sorted(
         ((aid, info) for aid, (_sim, _st, info) in by_aphia.items()),
-        key=lambda kv: (0 if by_aphia[kv[0]][1] == "accepted" else 1, -by_aphia[kv[0]][0]),
+        key=lambda kv: (
+            0 if by_aphia[kv[0]][2]["kind"] == "name" and by_aphia[kv[0]][2]["term"].strip().lower() == q_lower else 1,
+            0 if by_aphia[kv[0]][1] == "accepted" else 1,
+            -by_aphia[kv[0]][0],
+        ),
     )
 
 
