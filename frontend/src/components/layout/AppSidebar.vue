@@ -59,7 +59,7 @@ const sections = computed(() => [
     label: '软体数据库',
     items: [
       { name: '物种检索', to: '/taxa', icon: Dna, enabled: true },
-      { name: '拍卖记录', to: '/', icon: Search, enabled: true }
+      { name: '拍卖记录', to: '/auctions', icon: Search, enabled: true }
     ]
   },
   {

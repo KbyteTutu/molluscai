@@ -13,6 +13,12 @@ const routes = [
     redirect: '/taxa',
   },
   {
+    path: '/auctions',
+    name: 'Auctions',
+    component: () => import('@/views/HomeView.vue'),
+    meta: { requiresAuth: false }
+  },
+  {
     path: '/auctions/:itemNo',
     name: 'AuctionDetail',
     component: () => import('@/views/AuctionDetailView.vue'),
