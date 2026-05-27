@@ -158,7 +158,7 @@ const visibleChildren = computed(() =>
   showAllChildren.value ? children.value : children.value.slice(0, COLLAPSE_LIMIT)
 )
 
-// --- 冈瓦纳英汉博物词典 已下线（ECS 出口无法访问 ganvana.com） ---
+
 
 watch(() => route.params.aphiaId, () => { if (route.params.aphiaId) load() })
 onMounted(load)

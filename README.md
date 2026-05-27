@@ -1,115 +1,68 @@
 # MolluscAI
 
-基于 RAG 的智能贝壳知识平台：自然语言问答 + shellauction.net 拍卖数据查询 + 软体动物学文献知识库。
+软体动物学知识平台：物种分类检索、拍卖记录查询、iNaturalist 集成、WoRMS 外部匹配。
 
-详细设计见 [docs/design.md](docs/design.md)，进度见 [docs/work.md](docs/work.md)，需求见 [docs/todo.md](docs/todo.md)。
+## 功能
+
+- **物种检索** — 30 万+ 软体动物（Mollusca）分类数据，支持拉丁学名/俗名/曾用名检索，trigram 模糊匹配 + 语义向量检索
+- **WoRMS 外部匹配** — 热加载 WoRMS API，实现在非软体动物门类的精确查找（Foraminifera、Cnidaria 等）
+- **iNaturalist 集成** — 物种详情页自动查询 iNaturalist API，同步多语言俗名到本地数据库，支持所有分类阶元
+- **拍卖记录** — shellauction.net 历史拍卖数据查询与对比
+- **纠错系统** — 用户可提交俗名、学名等字段的修正建议，管理员审核后更新
+- **管理后台** — 数据采集、模型配置、向量管理、用户/配额/查询日志管理
+
+## 快速开始
+
+```bash
+cp .env.example .env
+./dev up          # 一键启动全栈
+./dev seed        # 导入历史拍卖数据（需要 legacy/postgres_backup.sql）
+./dev status      # 全栈健康检查
+```
 
 ## 目录结构
 
 ```
 molluscai/
-├── README.md / LICENSE / .env.example / .gitignore
-├── docker-compose.yml          # 服务编排入口
 ├── backend/                    # FastAPI + Celery
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── alembic.ini / alembic/  # DB 迁移
-│   └── app/
-│       ├── main.py             # FastAPI 入口
-│       ├── config.py
-│       ├── database.py
-│       ├── api/                # 路由层
-│       ├── models/             # SQLAlchemy ORM
-│       ├── schemas/            # Pydantic
-│       ├── services/           # 业务逻辑
-│       ├── tasks/              # Celery 任务（scraper / image downloader / 未来 RAG pipeline）
-│       ├── core/               # security / exceptions / rate_limiter
-│       └── utils/
-├── frontend/                   # Vue 3 + Vite + Element Plus
-│   ├── Dockerfile
-│   ├── nginx.conf
-│   ├── vite.config.js
-│   └── src/                    # views / components / stores / api / router
-├── infra/                      # 部署与基础设施
-│   ├── docker/
-│   │   └── base.Dockerfile     # 预装 pip 依赖的 base 镜像
-│   └── postgres/
-│       └── init/               # 容器首次启动自动执行的 SQL
-├── docs/                       # 项目文档
-│   ├── design.md
-│   ├── todo.md
-│   └── work.md
-└── legacy/                     # 历史代码与数据备份（不参与构建）
-    ├── postgres_backup.sql     # v1 数据库 dump（已导入新 schema，gitignored）
-    ├── shellauction-net-tool/  # v1 Python 后端
-    └── vue-shellauction-net-tool/  # v1 Vue 前端
+│   ├── app/
+│   │   ├── api/                # REST 路由
+│   │   ├── models/             # SQLAlchemy ORM
+│   │   ├── schemas/            # Pydantic
+│   │   ├── services/           # 业务逻辑（搜索、iNaturalist、LLM）
+│   │   ├── tasks/              # Celery 任务
+│   │   └── core/               # 安全、限流、缓存
+│   └── scripts/                # 数据导入脚本
+├── frontend/                   # Vue 3 + Vite
+│   └── src/
+│       ├── views/              # 页面组件
+│       ├── components/         # UI 组件
+│       ├── stores/             # Pinia 状态管理
+│       └── api/                # API 客户端
+├── infra/                      # Docker 镜像 + PostgreSQL DDL
+├── scripts/                    # dev.sh 工具箱 + WoRMS dump
+├── docs/                       # 设计文档 + 工作记录
+└── legacy/                     # v1 历史代码（不参与构建）
 ```
 
-## 快速开始
+## 开发
 
 ```bash
-# 1. 准备环境变量
-cp .env.example .env
-
-# 2. 一键启动（自动构建缺失或过期的 base 镜像）
-./dev up
-
-# 3. 首次启动后，导入历史拍卖数据（需要 legacy/postgres_backup.sql）
-./dev seed
-
-# 4. 查看全栈状态
-./dev status
+./dev up                # 启动全栈
+./dev rebuild           # 强制重建
+./dev restart [svc]     # 重启服务
+./dev logs [svc]        # 查看日志
+./dev psql [args]       # 进数据库
+./dev test              # 冒烟测试
+./dev help              # 完整帮助
 ```
 
-## 开发脚本 `./dev`
-
-所有日常操作集中在顶层 `./dev`（指向 [`scripts/dev.sh`](scripts/dev.sh)）：
-
-```
-./dev up                    # 启动全栈（智能重建 base 镜像）
-./dev down                  # 停止
-./dev rebuild               # --no-cache 强制重建 base + backend + celery
-./dev restart [svc]         # 重启（默认 backend + celery-worker）
-./dev nuke                  # 清空所有数据和镜像（需输入 'nuke' 确认）
-
-./dev logs [svc]            # 跟日志（默认 backend）
-./dev status                # 全栈健康检查
-
-./dev psql [args]           # psql 进 postgres（支持 -c "SQL"）
-./dev redis [args]          # redis-cli
-./dev shell [svc]           # bash 进容器
-
-./dev seed                  # 导入 legacy/postgres_backup.sql
-./dev backup [path]         # pg_dump 到 backups/<timestamp>.sql.gz
-./dev restore <file>        # 从备份恢复（危险）
-
-./dev scrape [N]            # 触发 scraper（需 ADMIN_USERNAME/PASSWORD env）
-./dev images [N]            # 触发图片下载
-
-./dev test                  # 端到端冒烟测试
-./dev help                  # 完整帮助
-```
-
-常见调试循环：
+## 部署
 
 ```bash
-# 改完 requirements.txt
-./dev rebuild
-
-# 改完 Python 代码（backend 有 --reload，worker 要手动）
-./dev restart celery-worker
-
-# 改完 SQL schema
-./dev nuke && ./dev up && ./dev seed
-```
-
-## 手动构建（跳过 ./dev）
-
-## 手动构建（跳过 ./dev）
-
-```bash
-docker build -f infra/docker/base.Dockerfile -t molluscai-base:v0.2 .
-docker compose up -d --build
+./dev prod-up           # 生产环境启动
+./dev prod-import <worms.sqlite> <backup.sql>  # 导入数据
+./dev prod-secrets      # 生成安全密钥
 ```
 
 ## 访问地址
@@ -117,18 +70,17 @@ docker compose up -d --build
 | 入口 | 地址 |
 |---|---|
 | 前端 | http://localhost:3000 |
-| 后端 API | http://localhost:8000 |
+| API | http://localhost:8000 |
 | Swagger | http://localhost:8000/docs |
-| MinIO Console | http://localhost:9003 |
+| MinIO | http://localhost:9003 |
 
-## 服务清单
+## 技术栈
 
-| 服务 | 用途 | 外部端口 |
-|---|---|---|
-| postgres | PostgreSQL 16 + pgvector + pg_trgm | 5433 |
-| redis | 缓存 + Celery broker | 6380 |
-| minio | 对象存储（图片、PDF） | 9002 (S3) / 9003 (Console) |
-| backend | FastAPI | 8000 |
-| celery-worker | Scraper / 图片下载 / RAG pipeline | - |
-| celery-beat | 定时任务调度 | - |
-| frontend | Vue 3 + Nginx | 3000 |
+- **后端**: FastAPI + PostgreSQL 16 (pgvector + pg_trgm) + Redis + Celery + MinIO
+- **前端**: Vue 3 + Vite + Pinia + Tailwind CSS
+- **AI**: DeepSeek / SiliconFlow / 智谱 (多模型支持，可切换)
+- **数据源**: WoRMS / MolluscaBase / iNaturalist / shellauction.net
+
+## 许可证
+
+MIT License — 详见 [LICENSE](LICENSE)

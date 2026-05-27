@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS taxa_vernaculars (
     language_code   TEXT,
     raw             JSONB
 );
--- add source column to track provenance (ganvana / inaturalist / manual)
+-- add source column to track provenance (inaturalist / manual)
 ALTER TABLE taxa_vernaculars ADD COLUMN IF NOT EXISTS source TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_vern_aphia    ON taxa_vernaculars (aphia_id);
