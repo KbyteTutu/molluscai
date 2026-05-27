@@ -9,6 +9,24 @@ class TaxonMatchInfo(BaseModel):
     term: str
     authority: Optional[str] = None
     language: Optional[str] = None
+    source: str = "local"
+
+
+class WormsExternalMatch(BaseModel):
+    found: bool = False
+    aphia_id: Optional[int] = None
+    scientificname: Optional[str] = None
+    authority: Optional[str] = None
+    rank: Optional[str] = None
+    status: Optional[str] = None
+    phylum: Optional[str] = None
+    kingdom: Optional[str] = None
+    class_: Optional[str] = Field(default=None, alias="class")
+    order_: Optional[str] = Field(default=None, alias="order")
+    family: Optional[str] = None
+    url: Optional[str] = None
+
+    model_config = {"populate_by_name": True}
 
 
 class TaxonRead(BaseModel):

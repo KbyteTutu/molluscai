@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import httpx
+
 from app.api.deps import get_current_user, get_db
 from app.core.quota import (
     QUERY_TYPE_AI,
@@ -22,6 +24,7 @@ from app.schemas.taxon import (
     TaxonSearchResponse,
     TaxonSynonym,
     TaxonVernacular,
+    WormsExternalMatch,
 )
 from app.services.taxa_search import hybrid_search, lexical_search
 from app.services.inaturalist import lookup as inat_lookup
@@ -52,6 +55,44 @@ async def list_statuses(
         text("SELECT status, COUNT(*) as n FROM taxa WHERE status IS NOT NULL GROUP BY status ORDER BY n DESC")
     )
     return [{"status": r._mapping["status"], "count": r._mapping["n"]} for r in rows]
+
+
+@router.get("/worms-lookup", response_model=WormsExternalMatch)
+async def worms_lookup(
+    q: str = Query("", min_length=2),
+    _: User = Depends(get_current_user),
+):
+    WORMS_API = "https://www.marinespecies.org/rest"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{WORMS_API}/AphiaRecordsByName/{q}",
+                params={"like": "false", "marine_only": "false"},
+            )
+            if resp.status_code != 200:
+                return WormsExternalMatch()
+            data = resp.json()
+    except Exception:
+        return WormsExternalMatch()
+
+    if not isinstance(data, list) or not data:
+        return WormsExternalMatch()
+
+    rec = data[0]
+    return WormsExternalMatch(
+        found=True,
+        aphia_id=rec.get("AphiaID"),
+        scientificname=rec.get("scientificname"),
+        authority=rec.get("authority"),
+        rank=rec.get("rank"),
+        status=rec.get("status"),
+        phylum=rec.get("phylum"),
+        kingdom=rec.get("kingdom"),
+        class_=rec.get("class"),
+        order_=rec.get("order"),
+        family=rec.get("family"),
+        url=rec.get("url"),
+    )
 
 
 @router.get("/search", response_model=TaxonSearchResponse)

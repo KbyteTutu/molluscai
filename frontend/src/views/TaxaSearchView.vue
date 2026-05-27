@@ -2,7 +2,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { taxaApi } from '@/api'
-import { Search, ChevronRight, Sparkles, Type, History, Languages, ShieldAlert } from 'lucide-vue-next'
+import { Search, ChevronRight, Sparkles, Type, History, Languages, ShieldAlert, ExternalLink, Globe, X } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
 import CardContent from '@/components/ui/CardContent.vue'
 import Input from '@/components/ui/Input.vue'
@@ -35,6 +35,10 @@ const total = ref(0)
 const loading = ref(false)
 const error = ref('')
 const hasSearched = ref(false)
+const wormsMatch = ref(null)
+const wormsLoading = ref(false)
+let wormsAbort = null
+const wormsDetailOpen = ref(false)
 
 const RANKS = ['', 'Species', 'Genus', 'Family', 'Order', 'Class', 'Phylum']
 const statuses = ref([])
@@ -72,6 +76,12 @@ async function runSearch(reset = true) {
     const { data } = await taxaApi.search(params)
     items.value = data.items
     total.value = data.total
+    // parallel WoRMS external lookup
+    if (q.value.trim().length >= 2 && !rank.value && !family.value && !genus.value && !status.value) {
+      wormsLookup(q.value.trim())
+    } else {
+      wormsMatch.value = null
+    }
   } catch (e) {
     error.value = e.response?.data?.detail || e.message || '检索失败'
     items.value = []
@@ -98,6 +108,22 @@ function prevPage() {
   if (offset.value === 0) return
   offset.value = Math.max(0, offset.value - PAGE_SIZE)
   runSearch(false)
+}
+
+async function wormsLookup(query) {
+  if (wormsAbort) wormsAbort.abort()
+  wormsAbort = new AbortController()
+  wormsLoading.value = true
+  wormsMatch.value = null
+  try {
+    const { data } = await taxaApi.wormsLookup(query)
+    if (!data.found) return
+    // skip if already in local results
+    const exists = items.value.some(i => i.aphia_id === data.aphia_id)
+    if (!exists) wormsMatch.value = data
+  } catch (_) {} finally {
+    wormsLoading.value = false
+  }
 }
 
 </script>
@@ -191,6 +217,39 @@ function prevPage() {
         <AlertDescription>{{ error }}</AlertDescription>
       </Alert>
 
+      <div v-if="wormsMatch" class="mb-3 rounded-lg border-2 border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-3">
+        <div class="flex items-center gap-2 mb-1">
+          <Globe class="size-3.5 text-emerald-600" />
+          <span class="text-[10px] uppercase tracking-widest text-emerald-700 dark:text-emerald-400">WoRMS 外部匹配</span>
+          <Badge variant="outline" class="text-[10px]">{{ wormsMatch.phylum || '—' }}</Badge>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <button
+              type="button"
+              class="text-left hover:underline"
+              @click="wormsDetailOpen = true"
+            >
+              <TaxonName :name="wormsMatch.scientificname" class="text-sm font-medium" />
+              <span v-if="wormsMatch.authority" class="text-xs text-muted-foreground ml-2 font-serif">{{ wormsMatch.authority }}</span>
+            </button>
+            <div class="text-xs text-muted-foreground mt-0.5">
+              <span v-if="wormsMatch.rank" class="uppercase tracking-wider text-[10px]">{{ wormsMatch.rank }}</span>
+              <span v-if="wormsMatch.status"> · {{ wormsMatch.status }}</span>
+            </div>
+          </div>
+          <a
+            v-if="wormsMatch.url"
+            :href="wormsMatch.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="shrink-0 inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700"
+          >
+            WoRMS <ExternalLink class="size-3" />
+          </a>
+        </div>
+      </div>
+
       <div v-if="loading && !items.length" class="space-y-2">
         <Skeleton v-for="i in 8" :key="i" class="h-14" />
       </div>
@@ -255,4 +314,47 @@ function prevPage() {
       </div>
     </section>
   </div>
+
+  <Teleport to="body">
+    <div v-if="wormsDetailOpen && wormsMatch" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="wormsDetailOpen = false">
+      <div class="bg-background rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[85vh] overflow-y-auto">
+        <div class="p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <Globe class="size-4 text-emerald-600" />
+              <h2 class="font-semibold text-sm">WoRMS 外部记录</h2>
+            </div>
+            <button class="text-muted-foreground hover:text-foreground" @click="wormsDetailOpen = false"><X class="size-4" /></button>
+          </div>
+          <p class="text-xs text-muted-foreground">以下数据来自 WoRMS 实时查询，不在本地软体动物数据库中。</p>
+
+          <dl class="space-y-2 text-sm">
+            <div class="flex justify-between gap-2 border-b border-dashed pb-1"><dt class="text-xs text-muted-foreground">学名</dt><dd class="font-serif italic">{{ wormsMatch.scientificname }}</dd></div>
+            <div v-if="wormsMatch.authority" class="flex justify-between gap-2 border-b border-dashed pb-1"><dt class="text-xs text-muted-foreground">命名人</dt><dd class="font-serif">{{ wormsMatch.authority }}</dd></div>
+            <div class="flex justify-between gap-2 border-b border-dashed pb-1"><dt class="text-xs text-muted-foreground">AphiaID</dt><dd class="font-mono text-xs">{{ wormsMatch.aphia_id }}</dd></div>
+            <div v-if="wormsMatch.rank" class="flex justify-between gap-2 border-b border-dashed pb-1"><dt class="text-xs text-muted-foreground">阶元</dt><dd class="uppercase tracking-wider text-[10px]">{{ wormsMatch.rank }}</dd></div>
+            <div v-if="wormsMatch.status" class="flex justify-between gap-2 border-b border-dashed pb-1"><dt class="text-xs text-muted-foreground">状态</dt><dd>{{ wormsMatch.status }}</dd></div>
+            <div v-if="wormsMatch.kingdom" class="flex justify-between gap-2 border-b border-dashed pb-1"><dt class="text-xs text-muted-foreground">界</dt><dd>{{ wormsMatch.kingdom }}</dd></div>
+            <div v-if="wormsMatch.phylum" class="flex justify-between gap-2 border-b border-dashed pb-1"><dt class="text-xs text-muted-foreground">门</dt><dd>{{ wormsMatch.phylum }}</dd></div>
+            <div v-if="wormsMatch.class_" class="flex justify-between gap-2 border-b border-dashed pb-1"><dt class="text-xs text-muted-foreground">纲</dt><dd>{{ wormsMatch.class_ }}</dd></div>
+            <div v-if="wormsMatch.order_" class="flex justify-between gap-2 border-b border-dashed pb-1"><dt class="text-xs text-muted-foreground">目</dt><dd>{{ wormsMatch.order_ }}</dd></div>
+            <div v-if="wormsMatch.family" class="flex justify-between gap-2 border-b border-dashed pb-1"><dt class="text-xs text-muted-foreground">科</dt><dd>{{ wormsMatch.family }}</dd></div>
+          </dl>
+
+          <div class="flex gap-2 pt-2">
+            <a
+              v-if="wormsMatch.url"
+              :href="wormsMatch.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex-1"
+            >
+              <Button variant="default" size="sm" class="w-full"><ExternalLink class="size-3.5" /> 在 WoRMS 查看</Button>
+            </a>
+            <Button variant="outline" size="sm" class="flex-1" @click="wormsDetailOpen = false">关闭</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
