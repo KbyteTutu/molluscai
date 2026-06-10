@@ -8,7 +8,25 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
   const quota = ref(null)
 
-  const isAuthenticated = computed(() => !!token.value)
+  const now = ref(Date.now())
+  setInterval(() => { now.value = Date.now() }, 30000)
+
+  function base64UrlDecode(str) {
+    let base64 = str.replace(/-/g, '+').replace(/_/g, '/')
+    while (base64.length % 4) base64 += '='
+    return atob(base64)
+  }
+
+  function isTokenExpired(token) {
+    if (!token) return true
+    try {
+      const payload = JSON.parse(base64UrlDecode(token.split('.')[1]))
+      return payload.exp * 1000 < now.value
+    } catch {
+      return true
+    }
+  }
+  const isAuthenticated = computed(() => !!token.value && !isTokenExpired(token.value))
   const currentUser = computed(() => user.value)
   const isSuperadmin = computed(() => user.value?.role === 'superadmin')
 
@@ -68,7 +86,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
     const response = await authApi.refresh({ refresh_token: refreshToken.value })
     token.value = response.data.access_token
-    refreshToken.value = response.data.refresh_token || response.data.refresh_token
+    refreshToken.value = response.data.refresh_token
     persistTokens()
     return response.data.access_token
   }
