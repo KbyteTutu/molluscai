@@ -10,6 +10,7 @@ BASE_IMAGE="molluscai-base:v0.3"
 BASE_DOCKERFILE="infra/docker/base.Dockerfile"
 COMPOSE="docker compose"
 COMPOSE_PROD="$COMPOSE -f docker-compose.yml -f docker-compose.prod.yml"
+GIT_SSH_COMMAND_DEFAULT="ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2"
 
 NETWORK_NAME="molluscai-net"
 VOLUMES=(molluscai-postgres-data molluscai-redis-data molluscai-minio-data)
@@ -44,6 +45,10 @@ ok()   { printf '%s✓%s %s\n' "$C_OK" "$C_END" "$*"; }
 warn() { printf '%s!%s %s\n' "$C_WARN" "$C_END" "$*"; }
 err()  { printf '%s✗%s %s\n' "$C_ERR" "$C_END" "$*" >&2; }
 die()  { err "$*"; exit 1; }
+
+git_quick() {
+  GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-$GIT_SSH_COMMAND_DEFAULT}" git "$@"
+}
 
 # ─── helpers ────────────────────────────────────────────────
 base_image_exists() { docker image inspect "$BASE_IMAGE" >/dev/null 2>&1; }
@@ -497,8 +502,8 @@ cmd_deploy() {
   before=$(git rev-parse HEAD)
 
   log "updating code (fast-forward only)..."
-  git fetch --prune origin
-  git pull --ff-only
+  git_quick fetch --prune --progress origin
+  git_quick pull --ff-only --progress
   after=$(git rev-parse HEAD)
 
   if [[ "$before" == "$after" && "$force_rebuild" -eq 0 ]]; then
