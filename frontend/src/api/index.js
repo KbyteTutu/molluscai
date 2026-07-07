@@ -148,7 +148,12 @@ export const adminApi = {
   updateCorrection: (id, data) => apiClient.patch(`/admin/corrections/${id}`, data),
   getSettings: () => apiClient.get('/admin/settings'),
   updateSettings: (data) => apiClient.patch('/admin/settings', data),
+  updateNotices: (data) => apiClient.patch('/admin/settings/update-notices', data),
   cleanupVectors: (target) => apiClient.post('/admin/cleanup-vectors', { target })
+}
+
+export const publicApi = {
+  updateNotices: () => apiClient.get('/public/update-notices')
 }
 
 export const userApi = {

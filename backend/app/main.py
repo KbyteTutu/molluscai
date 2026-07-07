@@ -6,8 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.config import settings
-from app.api.v1 import admin, auction, auth, corrections, feedback, models as models_api, taxa, users
+from app.api.v1 import admin, auction, auth, corrections, feedback, models as models_api, public, taxa, users
 from app.core.exceptions import register_exception_handlers
+from app.services.update_notices import DEFAULT_UPDATE_NOTICES, UPDATE_NOTICES_KEY, serialize_update_notices
 
 
 async def bootstrap_app_settings() -> None:
@@ -33,6 +34,17 @@ async def bootstrap_app_settings() -> None:
               ('smart_search_documents', 'false')
             ON CONFLICT (key) DO NOTHING
         """))
+        await conn.execute(
+            text("""
+                INSERT INTO app_settings (key, value)
+                VALUES (:key, :value)
+                ON CONFLICT (key) DO NOTHING
+            """),
+            {
+                "key": UPDATE_NOTICES_KEY,
+                "value": serialize_update_notices(DEFAULT_UPDATE_NOTICES),
+            },
+        )
 
 
 @asynccontextmanager
@@ -69,6 +81,7 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
 app.include_router(auction.router, prefix="/api/v1/auction", tags=["Auction"])
 app.include_router(taxa.router, prefix="/api/v1/taxa", tags=["Taxa"])
+app.include_router(public.router, prefix="/api/v1/public", tags=["Public"])
 app.include_router(models_api.router, prefix="/api/v1/admin/models", tags=["Admin"])
 app.include_router(feedback.router, prefix="/api/v1", tags=["Feedback"])
 app.include_router(corrections.router, prefix="/api/v1", tags=["Corrections"])

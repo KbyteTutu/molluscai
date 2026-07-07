@@ -1,6 +1,7 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { Bell, Dot } from 'lucide-vue-next'
+import { publicApi } from '@/api'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Sheet from '@/components/ui/Sheet.vue'
@@ -12,11 +13,23 @@ import Separator from '@/components/ui/Separator.vue'
 
 const open = ref(false)
 
-const updates = [
+const fallbackUpdates = [
   { date: '2026-07-07', title: '匿名检索开放', text: '未登录也可使用拍卖与物种词法查询。' },
   { date: '2026-07-07', title: '匿名访问限流', text: '匿名搜索每分钟 20 次，登录后可继续使用。' },
   { date: '2026-07-07', title: '安全加固', text: '模型密钥加密存储，生产弱密钥会阻止启动。' }
 ]
+const updates = ref(fallbackUpdates)
+
+onMounted(async () => {
+  try {
+    const { data } = await publicApi.updateNotices()
+    if (Array.isArray(data?.items) && data.items.length) {
+      updates.value = data.items
+    }
+  } catch (_) {
+    updates.value = fallbackUpdates
+  }
+})
 </script>
 
 <template>
@@ -47,7 +60,7 @@ const updates = [
       <Separator class="my-4" />
 
       <div class="space-y-4">
-        <article v-for="item in updates" :key="item.title" class="space-y-1.5">
+        <article v-for="item in updates" :key="`${item.date}-${item.title}`" class="space-y-1.5">
           <div class="flex items-center gap-2 text-[11px] text-muted-foreground">
             <Dot class="size-4 text-primary" />
             <time>{{ item.date }}</time>

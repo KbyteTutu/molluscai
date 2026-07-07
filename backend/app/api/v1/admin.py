@@ -24,6 +24,7 @@ from app.services.minio_client import get_minio
 from app.services.task_tracker import record_task, record_embedding_task, get_recent_tasks, get_task, get_worker_tasks
 from app.core.security import hash_password
 from app.core.request_ip import get_display_ip
+from app.services.update_notices import UpdateNoticeList, get_update_notices, set_update_notices
 
 router = APIRouter()
 
@@ -902,7 +903,9 @@ async def get_settings(
 ):
     async def _compute():
         rows = (await db.execute(select(Setting))).scalars().all()
-        return {s.key: s.value for s in rows}
+        data = {s.key: s.value for s in rows}
+        data["update_notices"] = (await get_update_notices(db)).model_dump()
+        return data
 
     return await cached("admin:settings", ttl=30, compute=_compute)
 
@@ -925,6 +928,17 @@ async def patch_settings(
     await bust("admin:settings")
     rows = (await db.execute(select(Setting))).scalars().all()
     return {s.key: s.value for s in rows}
+
+
+@router.patch("/settings/update-notices", response_model=UpdateNoticeList)
+async def patch_update_notices(
+    payload: UpdateNoticeList,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    notices = await set_update_notices(db, payload)
+    await bust("admin:settings")
+    return notices
 
 
 @router.post("/cleanup-vectors", response_model=CleanupVectorsResponse)
