@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
-import { Bell, Dot } from 'lucide-vue-next'
+import { Bell, Dot, EyeOff } from 'lucide-vue-next'
 import { publicApi } from '@/api'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -12,6 +12,8 @@ import SheetDescription from '@/components/ui/SheetDescription.vue'
 import Separator from '@/components/ui/Separator.vue'
 
 const open = ref(false)
+const hidden = ref(false)
+const HIDDEN_KEY = 'molluscai-update-notice-hidden'
 
 const fallbackUpdates = [
   { date: '2026-07-07', title: '匿名检索开放', text: '未登录也可使用拍卖与物种词法查询。' },
@@ -21,6 +23,7 @@ const fallbackUpdates = [
 const updates = ref(fallbackUpdates)
 
 onMounted(async () => {
+  hidden.value = localStorage.getItem(HIDDEN_KEY) === 'true'
   try {
     const { data } = await publicApi.updateNotices()
     if (Array.isArray(data?.items) && data.items.length) {
@@ -30,10 +33,16 @@ onMounted(async () => {
     updates.value = fallbackUpdates
   }
 })
+
+function hideNotice() {
+  localStorage.setItem(HIDDEN_KEY, 'true')
+  hidden.value = true
+  open.value = false
+}
 </script>
 
 <template>
-  <div class="fixed bottom-4 left-4 z-40 print:hidden">
+  <div v-if="!hidden" class="fixed right-4 top-16 z-40 print:hidden md:top-5">
     <Button
       variant="outline"
       size="sm"
@@ -48,7 +57,7 @@ onMounted(async () => {
   </div>
 
   <Sheet v-model:open="open">
-    <SheetContent side="left" class="w-[22rem] max-w-[calc(100vw-2rem)] sm:max-w-sm">
+    <SheetContent side="right" class="w-[22rem] max-w-[calc(100vw-2rem)] sm:max-w-sm">
       <SheetHeader>
         <div class="flex items-center gap-2">
           <SheetTitle class="text-xl">功能更新</SheetTitle>
@@ -69,6 +78,13 @@ onMounted(async () => {
           <p class="text-xs leading-relaxed text-muted-foreground">{{ item.text }}</p>
         </article>
       </div>
+
+      <Separator class="my-4" />
+
+      <Button variant="ghost" size="sm" class="w-full justify-start text-muted-foreground" @click="hideNotice">
+        <EyeOff class="size-4" />
+        不再提示
+      </Button>
     </SheetContent>
   </Sheet>
 </template>
