@@ -1,6 +1,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { taxaApi } from '@/api'
 import { Search, ChevronRight, Sparkles, Type, History, Languages, ShieldAlert, ExternalLink, Globe, X } from 'lucide-vue-next'
 import Card from '@/components/ui/Card.vue'
@@ -20,6 +21,8 @@ import { formatNumber, cn } from '@/lib/utils'
 defineOptions({ name: 'TaxaSearchView' })
 
 const router = useRouter()
+const auth = useAuthStore()
+const isAuthenticated = computed(() => auth.isAuthenticated)
 
 const PAGE_SIZE = 20
 const q = ref('')
@@ -62,6 +65,10 @@ const pageInfo = computed(() => {
 const zhNames = ref({})
 
 async function runSearch(reset = true) {
+  if (!isAuthenticated.value && mode.value !== 'lexical') {
+    router.push({ name: 'Login', query: { redirect: '/taxa' } })
+    return
+  }
   if (reset) offset.value = 0
   hasSearched.value = true
   loading.value = true
@@ -76,6 +83,9 @@ async function runSearch(reset = true) {
     const { data } = await taxaApi.search(params)
     items.value = data.items
     total.value = data.total
+    if (data.rank_names_zh && !Object.keys(zhNames.value).length) {
+      zhNames.value = data.rank_names_zh
+    }
     // parallel WoRMS external lookup
     if (q.value.trim().length >= 2 && !rank.value && !family.value && !genus.value && !status.value) {
       wormsLookup(q.value.trim())
@@ -88,9 +98,6 @@ async function runSearch(reset = true) {
     total.value = 0
   } finally {
     loading.value = false
-  }
-  if (data.rank_names_zh && !Object.keys(zhNames.value).length) {
-    zhNames.value = data.rank_names_zh
   }
 }
 
@@ -160,6 +167,7 @@ async function wormsLookup(query) {
               <Type class="size-3.5" /> 词法
             </button>
             <button
+              v-if="isAuthenticated"
               type="button"
               :class="['inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
                 mode === 'hybrid' ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground']"

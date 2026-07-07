@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button.vue'
 import { Menu } from 'lucide-vue-next'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
 import CompareBar from '@/components/auction/CompareBar.vue'
+import UpdateNotice from '@/components/layout/UpdateNotice.vue'
 
 const mobileOpen = ref(false)
 const route = useRoute()
@@ -73,5 +74,6 @@ watch(() => route.fullPath, () => { mobileOpen.value = false })
     </div>
 
     <CompareBar />
+    <UpdateNotice />
   </div>
 </template>

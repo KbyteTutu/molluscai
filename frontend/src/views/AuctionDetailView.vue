@@ -14,6 +14,7 @@ import Separator from '@/components/ui/Separator.vue'
 import TaxonName from '@/components/common/TaxonName.vue'
 import ShellLogo from '@/components/brand/ShellLogo.vue'
 import { useCompareStore } from '@/stores/compare'
+import { useAuthStore } from '@/stores/auth'
 import { useTaxonMatchStore } from '@/stores/taxonMatch'
 import { formatPrice, formatDate, imageUrlsWithFallback, originalAuctionUrl, xorId, decodeXorId } from '@/lib/utils'
 import { toast } from 'vue-sonner'
@@ -21,6 +22,7 @@ import { toast } from 'vue-sonner'
 const route = useRoute()
 const router = useRouter()
 const compare = useCompareStore()
+const auth = useAuthStore()
 const taxonMatch = useTaxonMatchStore()
 const item = ref(null)
 const loading = ref(true)
@@ -89,6 +91,7 @@ const itemNo = computed(() => Number(decodeXorId(route.params.itemNo)))
 const taxon = computed(() => taxonMatch.get(itemNo.value))
 const taxonLoading = computed(() => taxonMatch.isLoading(itemNo.value))
 const taxonError = computed(() => taxonMatch.getError(itemNo.value))
+const isAuthenticated = computed(() => auth.isAuthenticated)
 
 const confidenceMeta = computed(() => {
   const c = taxon.value?.confidence
@@ -99,6 +102,10 @@ const confidenceMeta = computed(() => {
 })
 
 async function runTaxonMatch(force = false) {
+  if (!isAuthenticated.value) {
+    router.push({ name: 'Login', query: { redirect: router.currentRoute.value.fullPath } })
+    return
+  }
   try {
     await taxonMatch.fetch(itemNo.value, { force })
   } catch (e) {
@@ -167,7 +174,10 @@ onMounted(load)
               </p>
             </div>
             <div class="flex items-center gap-2">
-              <Button v-if="!taxon" size="sm" :disabled="taxonLoading" @click="runTaxonMatch(false)">
+              <Button v-if="!isAuthenticated" size="sm" variant="outline" @click="runTaxonMatch(false)">
+                登录后智能匹配
+              </Button>
+              <Button v-else-if="!taxon" size="sm" :disabled="taxonLoading" @click="runTaxonMatch(false)">
                 <Loader2 v-if="taxonLoading" class="size-4 animate-spin" />
                 <Sparkles v-else class="size-4" />
                 {{ taxonLoading ? '匹配中…' : '智能匹配' }}

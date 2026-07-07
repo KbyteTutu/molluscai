@@ -210,14 +210,14 @@ def test_login_with_null_bytes(anon_client, mock_db):
 
 
 def test_access_protected_route_without_token(anon_client):
-    response = anon_client.get("/api/v1/taxa/statuses")
+    response = anon_client.get("/api/v1/auth/me")
 
     assert response.status_code in {401, 403}
 
 
 def test_access_with_empty_token(anon_client):
     response = anon_client.get(
-        "/api/v1/taxa/statuses",
+        "/api/v1/auth/me",
         headers={"Authorization": "Bearer "},
     )
 
@@ -226,7 +226,7 @@ def test_access_with_empty_token(anon_client):
 
 def test_access_with_malformed_token(anon_client):
     response = anon_client.get(
-        "/api/v1/taxa/statuses",
+        "/api/v1/auth/me",
         headers={"Authorization": "Bearer not.a.jwt"},
     )
 
@@ -240,7 +240,7 @@ def test_access_with_expired_token(anon_client):
     )
 
     response = anon_client.get(
-        "/api/v1/taxa/statuses",
+        "/api/v1/auth/me",
         headers=auth_header_for_token(token),
     )
 
@@ -252,7 +252,7 @@ def test_access_with_tampered_token(anon_client):
     tampered = tamper_token_subject(token, str(uuid.uuid4()))
 
     response = anon_client.get(
-        "/api/v1/taxa/statuses",
+        "/api/v1/auth/me",
         headers=auth_header_for_token(tampered),
     )
 
@@ -263,7 +263,7 @@ def test_access_with_wrong_token_type(anon_client):
     token = create_refresh_token(subject=str(uuid.uuid4()))
 
     response = anon_client.get(
-        "/api/v1/taxa/statuses",
+        "/api/v1/auth/me",
         headers=auth_header_for_token(token),
     )
 
@@ -319,7 +319,7 @@ def test_token_algorithm_confusion(anon_client):
     )
 
     response = anon_client.get(
-        "/api/v1/taxa/statuses",
+        "/api/v1/auth/me",
         headers=auth_header_for_token(token),
     )
 

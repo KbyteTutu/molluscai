@@ -3,8 +3,8 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSearchStore } from '@/stores/search'
 import { useAuthStore } from '@/stores/auth'
-import { auctionApi, adminApi } from '@/api'
-import { Search, SlidersHorizontal, LayoutGrid, Rows3, ChevronDown, Lock, Sparkles, Type } from 'lucide-vue-next'
+import { adminApi } from '@/api'
+import { Search, SlidersHorizontal, LayoutGrid, Rows3, ChevronDown, Sparkles, Type } from 'lucide-vue-next'
 import SnailLogo from '@/components/brand/ShellLogo.vue'
 import Card from '@/components/ui/Card.vue'
 import CardContent from '@/components/ui/CardContent.vue'
@@ -37,10 +37,6 @@ const view = ref('cards')
 const mode = ref('lexical')
 const filtersOpen = ref(false)
 const smartSearchEnabled = ref(false)
-
-const anonItems = ref([])
-const anonLoading = ref(false)
-const anonError = ref(null)
 
 const filters = reactive({
   name: '', family: '', size: '', locality: '',
@@ -93,30 +89,25 @@ function buildPayload() {
 }
 
 async function runSearch(reset = true) {
-  if (!isAuthenticated.value) {
-    redirectToLogin()
-    return
-  }
+  if (!isAuthenticated.value && mode.value !== 'lexical') mode.value = 'lexical'
   if (reset) offset.value = 0
   hasSearched.value = true
   await search.searchAuctions(buildPayload())
 }
 
 function nextPage() {
-  if (!isAuthenticated.value) { redirectToLogin(); return }
   if (offset.value + PAGE_SIZE >= Math.min(search.total, 500)) return
   offset.value += PAGE_SIZE
   search.searchAuctions(buildPayload())
 }
 function prevPage() {
-  if (!isAuthenticated.value) { redirectToLogin(); return }
   if (offset.value === 0) return
   offset.value = Math.max(0, offset.value - PAGE_SIZE)
   search.searchAuctions(buildPayload())
 }
 
 function redirectToLogin() {
-  router.push({ name: 'Login', query: { redirect: '/' } })
+  router.push({ name: 'Login', query: { redirect: router.currentRoute.value.fullPath } })
 }
 
 const pageInfo = computed(() => {
@@ -126,26 +117,8 @@ const pageInfo = computed(() => {
   return `${formatNumber(start)} – ${formatNumber(end)} / ${formatNumber(search.total)}`
 })
 
-const displayItems = computed(() =>
-  isAuthenticated.value ? search.results : anonItems.value
-)
-
-const displayLoading = computed(() =>
-  isAuthenticated.value ? search.loading : anonLoading.value
-)
-
-async function loadAnonRecent() {
-  anonLoading.value = true
-  anonError.value = null
-  try {
-    const response = await auctionApi.recent()
-    anonItems.value = response.data.items || []
-  } catch (e) {
-    anonError.value = e.response?.data?.detail || '加载失败'
-  } finally {
-    anonLoading.value = false
-  }
-}
+const displayItems = computed(() => search.results)
+const displayLoading = computed(() => search.loading)
 
 async function fetchSettings() {
   if (!isAuthenticated.value) return
@@ -181,7 +154,6 @@ watch(isAuthenticated, async (next, prev) => {
     if (mode.value === 'hybrid') mode.value = 'lexical'
     search.clearResults()
     offset.value = 0
-    await loadAnonRecent()
   }
 })
 </script>
@@ -215,21 +187,7 @@ watch(isAuthenticated, async (next, prev) => {
       </Card>
     </section>
 
-    <Card v-if="!isAuthenticated" class="border-primary/30 bg-primary/5">
-      <CardContent class="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
-        <Lock class="size-5 shrink-0 text-primary" />
-        <div class="flex-1 space-y-0.5">
-          <p class="text-sm font-medium">下面展示最近 12 条拍卖记录</p>
-          <p class="text-xs text-muted-foreground">登录后可使用按学名/科/产地/价格/日期等条件检索全部 290 万条历史数据，并查看物种详情与对比。</p>
-        </div>
-        <div class="flex items-center gap-2 w-full sm:w-auto">
-          <Button variant="outline" size="sm" class="flex-1 sm:flex-none" @click="redirectToLogin">注册</Button>
-          <Button size="sm" class="flex-1 sm:flex-none" @click="redirectToLogin">登录</Button>
-        </div>
-      </CardContent>
-    </Card>
-
-    <Card v-if="isAuthenticated">
+    <Card>
       <CardContent class="p-4 md:p-5 space-y-4">
         <form @submit.prevent="runSearch(true)" class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div class="relative flex-1">
@@ -286,13 +244,13 @@ watch(isAuthenticated, async (next, prev) => {
       </CardContent>
     </Card>
 
-    <div v-if="isAuthenticated && !hasSearched && !search.loading && !search.hasResults" class="flex flex-col items-center justify-center py-12 md:py-16 text-center">
+    <div v-if="!hasSearched && !search.loading && !search.hasResults" class="flex flex-col items-center justify-center py-12 md:py-16 text-center">
       <SnailLogo :size="80" class="text-muted-foreground/20 mb-5" />
       <p class="text-muted-foreground max-w-sm leading-relaxed">在上方搜索框输入学名、科名、产地等关键词，开始探索拍卖数据库</p>
     </div>
 
     <section v-if="hasSearched || search.loading">
-      <div v-if="isAuthenticated" class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
+      <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4">
         <div>
           <h2 class="font-serif text-xl">检索结果</h2>
           <p v-if="search.total > 0" class="text-xs text-muted-foreground mt-0.5">{{ pageInfo }}</p>
@@ -329,19 +287,9 @@ watch(isAuthenticated, async (next, prev) => {
         </div>
       </div>
 
-      <div v-else class="mb-4">
-        <h2 class="font-serif text-xl">最近上拍</h2>
-        <p class="text-xs text-muted-foreground mt-0.5">登录后解锁完整 290 万条历史记录与高级筛选</p>
-      </div>
-
-      <Alert v-if="isAuthenticated && search.error" variant="destructive" class="mb-4">
+      <Alert v-if="search.error" variant="destructive" class="mb-4">
         <AlertTitle>检索失败</AlertTitle>
         <AlertDescription>{{ search.error }}</AlertDescription>
-      </Alert>
-
-      <Alert v-if="!isAuthenticated && anonError" variant="destructive" class="mb-4">
-        <AlertTitle>加载失败</AlertTitle>
-        <AlertDescription>{{ anonError }}</AlertDescription>
       </Alert>
 
       <div v-if="displayLoading && !displayItems.length">
@@ -353,27 +301,23 @@ watch(isAuthenticated, async (next, prev) => {
       <EmptyState v-else-if="!displayItems.length && !displayLoading" />
 
       <div v-else>
-        <div v-if="!isAuthenticated || view === 'cards'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div v-if="view === 'cards'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           <AuctionCard v-for="item in displayItems" :key="item.item_no" :item="item" />
         </div>
         <Card v-else class="overflow-hidden">
           <AuctionTable :items="displayItems" />
         </Card>
 
-        <div v-if="isAuthenticated && search.total > PAGE_SIZE" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-6">
+        <div v-if="search.total > PAGE_SIZE" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-6">
           <p class="text-xs text-muted-foreground">{{ pageInfo }}</p>
           <div class="flex items-center gap-2">
             <Button variant="outline" size="sm" :disabled="offset === 0 || search.loading" @click="prevPage">上一页</Button>
             <Button variant="outline" size="sm" :disabled="offset + PAGE_SIZE >= Math.min(search.total, 500) || search.loading" @click="nextPage">下一页</Button>
           </div>
         </div>
-        <p v-if="isAuthenticated && search.total > 500" class="text-[11px] text-muted-foreground/70 mt-2 sm:text-right">
+        <p v-if="search.total > 500" class="text-[11px] text-muted-foreground/70 mt-2 sm:text-right">
           检索结果上限 500 条 · 请使用筛选条件缩小范围
         </p>
-
-        <div v-if="!isAuthenticated" class="mt-6 flex justify-center">
-          <Button @click="redirectToLogin" class="px-8">登录后查看更多</Button>
-        </div>
       </div>
     </section>
   </div>

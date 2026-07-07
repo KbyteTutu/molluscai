@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_current_user
 from app.api.v1 import auction as auction_api
 from app.api.v1 import taxa as taxa_api
+from app.core.anonymous_rate_limit import AnonymousRateLimitResult
 from app.database import get_db
 from app.main import app
 from app.schemas.taxon import TaxonSearchResponse
@@ -46,12 +47,22 @@ def _security_test_defaults(monkeypatch, mock_db):
 
     monkeypatch.setattr(taxa_api, "check_quota", AsyncMock())
     monkeypatch.setattr(taxa_api, "log_query", AsyncMock())
+    monkeypatch.setattr(
+        taxa_api,
+        "check_anonymous_search_rate_limit",
+        AsyncMock(return_value=AnonymousRateLimitResult("203.0.113.10", True, 1, 20, 60)),
+    )
     monkeypatch.setattr(taxa_api, "_load_rank_names_zh", AsyncMock(return_value={}))
     monkeypatch.setattr(taxa_api, "lexical_search", AsyncMock(side_effect=_empty_taxa_search))
     monkeypatch.setattr(taxa_api, "hybrid_search", AsyncMock(side_effect=_empty_taxa_search))
 
     monkeypatch.setattr(auction_api, "check_quota", AsyncMock())
     monkeypatch.setattr(auction_api, "log_query", AsyncMock())
+    monkeypatch.setattr(
+        auction_api,
+        "check_anonymous_search_rate_limit",
+        AsyncMock(return_value=AnonymousRateLimitResult("203.0.113.10", True, 1, 20, 60)),
+    )
     monkeypatch.setattr(auction_api, "search_auctions", AsyncMock(return_value=([], 0)))
     monkeypatch.setattr(auction_api, "get_auction_by_item_no", AsyncMock(return_value=None))
     monkeypatch.setattr(auction_api, "_redis", lambda: _FakeRedis())

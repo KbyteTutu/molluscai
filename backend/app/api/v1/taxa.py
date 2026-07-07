@@ -4,7 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import httpx
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_current_user_optional, get_db
+from app.core.anonymous_rate_limit import (
+    check_anonymous_search_rate_limit,
+    raise_anonymous_rate_limited,
+)
 from app.core.quota import (
     QUERY_TYPE_AI,
     QUERY_TYPE_TAXA,
@@ -49,7 +53,6 @@ async def _load_rank_names_zh() -> dict[str, str]:
 @router.get("/statuses")
 async def list_statuses(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
 ):
     rows = await db.execute(
         text("SELECT status, COUNT(*) as n FROM taxa WHERE status IS NOT NULL GROUP BY status ORDER BY n DESC")
@@ -60,7 +63,6 @@ async def list_statuses(
 @router.get("/worms-lookup", response_model=WormsExternalMatch)
 async def worms_lookup(
     q: str = Query("", min_length=2),
-    _: User = Depends(get_current_user),
 ):
     WORMS_API = "https://www.marinespecies.org/rest"
     try:
@@ -107,20 +109,32 @@ async def search_taxa(
     offset: int = Query(0, ge=0, le=5000),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     is_ai = mode == "hybrid" and bool(q.strip())
     query_type = QUERY_TYPE_AI if is_ai else QUERY_TYPE_TAXA
 
-    await check_quota(
-        db, current_user, query_type,
-        request=request,
-        query_text=f"mode={mode} q={q}"[:200],
-    )
-
     response: TaxonSearchResponse | None = None
     status_code = 200
+    ip_address = get_client_ip(request)
     try:
+        if current_user is None:
+            if is_ai:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Login required for smart taxa search",
+                )
+            rate_limit = await check_anonymous_search_rate_limit(request)
+            ip_address = rate_limit.ip_address
+            if not rate_limit.allowed:
+                raise_anonymous_rate_limited(rate_limit)
+        elif is_ai:
+            await check_quota(
+                db, current_user, query_type,
+                request=request,
+                query_text=f"mode={mode} q={q}"[:200],
+            )
+
         if is_ai:
             response = await hybrid_search(
                 db=db, user_id=current_user.id, q=q.strip(),
@@ -194,7 +208,7 @@ async def search_taxa(
                 query_type=query_type,
                 query_text=f"mode={mode} q={q} rank={rank} family={family} genus={genus} status={status} offset={offset} limit={limit}"[:500],
                 result_count=response.total if response else 0,
-                ip_address=get_client_ip(request),
+                ip_address=ip_address,
                 status_code=status_code,
             )
 
@@ -208,7 +222,6 @@ async def rank_names_zh():
 async def get_taxon(
     aphia_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
 ):
     row = await db.execute(
         text("""
@@ -235,7 +248,6 @@ async def get_taxon(
 async def get_taxon_synonyms(
     aphia_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
 ):
     rows = await db.execute(
         text("""
@@ -253,7 +265,6 @@ async def get_taxon_synonyms(
 async def get_taxon_vernaculars(
     aphia_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
 ):
     rows = await db.execute(
         text("""
@@ -271,7 +282,6 @@ async def get_taxon_vernaculars(
 async def get_taxon_distributions(
     aphia_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
 ):
     rows = await db.execute(
         text("""
@@ -291,7 +301,6 @@ async def get_taxon_children(
     aphia_id: int,
     accepted_only: bool = Query(False, description="Only return children with status='accepted'"),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
 ):
     where = "WHERE parent_aphia_id = :id"
     params: dict[str, object] = {"id": aphia_id}
@@ -313,7 +322,6 @@ async def get_taxon_children(
 async def get_taxon_classification(
     aphia_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
 ):
     rows = await db.execute(
         text("""
@@ -331,7 +339,6 @@ async def get_taxon_classification(
 async def get_taxon_external_ids(
     aphia_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
 ):
     rows = await db.execute(
         text("""
@@ -349,7 +356,6 @@ async def get_taxon_external_ids(
 async def get_taxon_inaturalist(
     aphia_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
 ):
     row = await db.execute(
         text("SELECT scientificname, rank FROM taxa WHERE aphia_id = :id"),

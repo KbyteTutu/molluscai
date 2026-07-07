@@ -14,6 +14,10 @@ from app.api.deps import (
     get_current_user,
 )
 from app.config import settings
+from app.core.anonymous_rate_limit import (
+    check_anonymous_search_rate_limit,
+    raise_anonymous_rate_limited,
+)
 from app.core.quota import (
     QUERY_TYPE_AI,
     QUERY_TYPE_AUCTION,
@@ -98,23 +102,37 @@ async def search(
     filters: AuctionSearchRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_auction),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     mode = (filters.mode or "lexical").lower()
     query_type = QUERY_TYPE_AI if mode in ("vector", "hybrid") else QUERY_TYPE_AUCTION
-
-    await check_quota(
-        db, current_user, query_type,
-        request=request,
-        query_text=filters.model_dump_json(exclude_none=True),
-    )
-
+    ip_address = get_client_ip(request)
+    status_code = 200
     items: list = []
     total: int = 0
-    status_code = 200
+
     try:
+        if current_user is None:
+            if mode in ("vector", "hybrid"):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Login required for smart auction search",
+                )
+            rate_limit = await check_anonymous_search_rate_limit(request)
+            ip_address = rate_limit.ip_address
+            if not rate_limit.allowed:
+                raise_anonymous_rate_limited(rate_limit)
+        elif mode in ("vector", "hybrid"):
+            role_perms = require_auction
+            await role_perms(current_user)
+            await check_quota(
+                db, current_user, query_type,
+                request=request,
+                query_text=filters.model_dump_json(exclude_none=True),
+            )
+
         items, total = await search_auctions(
-            db, filters, mode=mode, user_id=current_user.id,
+            db, filters, mode=mode, user_id=current_user.id if current_user else None,
         )
         return SearchResponse(items=items, total=total, offset=filters.offset, limit=filters.limit)
     except HTTPException as e:
@@ -131,7 +149,7 @@ async def search(
                 query_type=query_type,
                 query_text=filters.model_dump_json(exclude_none=True),
                 result_count=total,
-                ip_address=get_client_ip(request),
+                ip_address=ip_address,
                 status_code=status_code,
             )
 
@@ -152,7 +170,6 @@ async def _search_method_not_allowed() -> None:
 async def list_families(
     q: str = Query(default="", description="Filter by family name (ILIKE)"),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
 ):
     """Return distinct family names with record counts for autocomplete."""
     stmt = (
@@ -170,7 +187,6 @@ async def list_families(
 async def get_detail(
     item_no: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_auction),
 ):
     auction = await get_auction_by_item_no(db, item_no)
     if auction is None:

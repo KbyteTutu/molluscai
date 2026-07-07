@@ -22,25 +22,25 @@ const routes = [
     path: '/auctions/:itemNo',
     name: 'AuctionDetail',
     component: () => import('@/views/AuctionDetailView.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   {
     path: '/taxa',
     name: 'Taxa',
     component: () => import('@/views/TaxaSearchView.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   {
     path: '/taxa/:aphiaId',
     name: 'TaxonDetail',
     component: () => import('@/views/TaxonDetailView.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   {
     path: '/compare',
     name: 'Compare',
     component: () => import('@/views/CompareView.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   {
     path: '/me',
