@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+import logging
 from typing import Optional
 
 from fastapi import HTTPException, Request, status
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.request_ip import get_client_ip
 from app.models.user import QueryLog, RoleQuota, User
 
+log = logging.getLogger(__name__)
 
 QUOTA_UNLIMITED = -1
 
@@ -197,18 +199,22 @@ async def log_query(
     ip_address: Optional[str] = None,
     status_code: int = 200,
 ) -> None:
-    truncated = (query_text or "")[:500]
-    log = QueryLog(
-        user_id=user.id if user else None,
-        query_text=truncated,
-        query_type=query_type,
-        result_count=result_count,
-        cost=cost,
-        ip_address=ip_address,
-        status_code=status_code,
-    )
-    db.add(log)
-    await db.flush()
+    try:
+        truncated = (query_text or "")[:500]
+        entry = QueryLog(
+            user_id=user.id if user else None,
+            query_text=truncated,
+            query_type=query_type,
+            result_count=result_count,
+            cost=cost,
+            ip_address=ip_address,
+            status_code=status_code,
+        )
+        db.add(entry)
+        await db.flush()
+    except Exception as exc:
+        await db.rollback()
+        log.warning("failed to write query audit log: %s", exc)
 
 
 def extract_ip(request: Request) -> Optional[str]:

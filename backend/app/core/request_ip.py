@@ -15,15 +15,38 @@ _PROXY_NETS = [
 ]
 
 
-def _is_private_ip(text: str) -> bool:
-    """Return True if this IP is definitely not a real client IP."""
+def _parse_ip(text: str) -> Optional[str]:
+    """Return a normalized IP address, or None for malformed proxy values."""
+    text = (text or "").strip().strip('"')
+    if not text:
+        return None
+
     # PostgreSQL INET may include a /prefix suffix; strip it.
     text = text.split("/")[0].strip()
+
+    # Some proxies append a port to IPv4 addresses in X-Forwarded-For.
+    if text.count(":") == 1 and "." in text:
+        host, port = text.rsplit(":", 1)
+        if port.isdigit():
+            text = host
+
+    # Bracketed IPv6 with port, e.g. [2001:db8::1]:443.
+    if text.startswith("[") and "]" in text:
+        text = text[1:text.index("]")]
+
     try:
-        addr = ipaddress.ip_address(text)
-        return any(addr in net for net in _PROXY_NETS)
+        return str(ipaddress.ip_address(text))
     except ValueError:
+        return None
+
+
+def _is_private_ip(text: str) -> bool:
+    """Return True if this IP is definitely not a real client IP."""
+    parsed = _parse_ip(text)
+    if parsed is None:
         return False
+    addr = ipaddress.ip_address(parsed)
+    return any(addr in net for net in _PROXY_NETS)
 
 
 def get_client_ip(request: Request) -> Optional[str]:
@@ -32,27 +55,22 @@ def get_client_ip(request: Request) -> Optional[str]:
     # client IP it is usually present here as a single value.
     raw = request.headers.get("x-real-ip")
     if raw:
-        try:
-            return str(ipaddress.ip_address(raw.strip()))
-        except ValueError:
-            pass  # fall through to X-Forwarded-For
+        parsed = _parse_ip(raw)
+        if parsed:
+            return parsed
 
     # Walk the X-Forwarded-For chain from left (origin client) to right,
     # returning the first IP that is NOT a known proxy/private address.
     xff = request.headers.get("x-forwarded-for")
     if xff:
         for part in xff.split(","):
-            candidate = part.strip()
+            candidate = _parse_ip(part)
             if candidate and not _is_private_ip(candidate):
                 return candidate
 
     # Last-resort: direct TCP connection (e.g. Docker bridge IP).
     if request.client:
-        raw = request.client.host
-        try:
-            return str(ipaddress.ip_address(raw))
-        except ValueError:
-            return None
+        return _parse_ip(request.client.host)
 
     return None
 
