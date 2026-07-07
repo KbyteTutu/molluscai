@@ -23,6 +23,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.secret_store import decrypt_secret
 from app.schemas.taxon import TaxonMatchInfo, TaxonRead, TaxonSearchResponse
 from app.services.llm_providers import (
     compose_taxon_text,
@@ -50,7 +51,11 @@ async def _pick_active(db: AsyncSession, purpose: str) -> Optional[dict]:
                 ORDER BY id DESC LIMIT 1"""),
         {"p": purpose},
     )).fetchone()
-    return dict(row._mapping) if row else None
+    if not row:
+        return None
+    data = dict(row._mapping)
+    data["api_key"] = decrypt_secret(data["api_key"])
+    return data
 
 
 async def _log_usage(db: AsyncSession, *, cfg_id: int, model_name: str, purpose: str,

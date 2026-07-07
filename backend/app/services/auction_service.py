@@ -11,6 +11,7 @@ from sqlalchemy import func, select, text, Numeric
 from sqlalchemy import case as sa_case
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.secret_store import decrypt_secret
 from app.models.auction import Auction
 from app.schemas.auction import AuctionRead, AuctionSearchRequest
 from app.services.llm_providers import (
@@ -286,6 +287,6 @@ async def _pick_active(db: AsyncSession, purpose: str) -> Optional[dict]:
         return None
     return {
         "id": r[0], "model_name": r[1], "provider": r[2],
-        "base_url": r[3], "api_key": r[4], "model_id": r[5],
+        "base_url": r[3], "api_key": decrypt_secret(r[4]), "model_id": r[5],
         "price_input": r[6], "price_unit": r[7],
     }

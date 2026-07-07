@@ -395,7 +395,9 @@ async function submitCorrection() {
               <span class="text-xs text-muted-foreground shrink-0">Status:</span>
               <Badge variant="secondary" class="text-[10px]">{{ inaturalist.conservation_status }}</Badge>
             </div>
-            <div v-if="inaturalist.wikipedia_summary" class="text-xs text-muted-foreground line-clamp-3 leading-relaxed" v-html="inaturalist.wikipedia_summary" />
+            <div v-if="inaturalist.wikipedia_summary" class="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+              {{ inaturalist.wikipedia_summary }}
+            </div>
           </div>
         </div>
         <div class="flex gap-2 mt-3">

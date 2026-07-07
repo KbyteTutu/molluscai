@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import Permission, RequirePermission, get_db
 from app.core.cache import cached
+from app.core.secret_store import decrypt_secret, encrypt_secret, secret_tail
 from app.models.user import User
 from app.schemas.model_config import (
     ModelConfigCreate,
@@ -26,15 +27,15 @@ from app.services.llm_providers import (
 log = logging.getLogger(__name__)
 
 router = APIRouter()
-require_admin = RequirePermission(Permission.MANAGE_USERS)
+require_manage_models = RequirePermission(Permission.MANAGE_MODELS)
+require_view_usage = RequirePermission(Permission.VIEW_USAGE)
 
 ALLOWED_PURPOSES = {"embedding", "rerank", "llm_chat", "ocr", "vision"}
 
 
 def _serialize(row) -> dict:
     d = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
-    key = d.get("api_key") or ""
-    d["api_key_tail"] = f"…{key[-4:]}" if len(key) >= 4 else None
+    d["api_key_tail"] = secret_tail(d.get("api_key") or "")
     d.pop("api_key", None)
     return d
 
@@ -43,7 +44,7 @@ def _serialize(row) -> dict:
 async def list_models(
     purpose: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_manage_models),
 ):
     sql = "SELECT id, model_name, provider, api_key, base_url, model_id, purpose, price_input, price_output, price_unit, is_active, created_at FROM model_configs"
     params: dict = {}
@@ -59,7 +60,7 @@ async def list_models(
 async def create_model(
     payload: ModelConfigCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_manage_models),
 ):
     if payload.purpose not in ALLOWED_PURPOSES:
         raise HTTPException(400, f"purpose must be one of {sorted(ALLOWED_PURPOSES)}")
@@ -69,6 +70,9 @@ async def create_model(
             text("UPDATE model_configs SET is_active=false WHERE purpose = :p"),
             {"p": payload.purpose},
         )
+
+    values = payload.model_dump()
+    values["api_key"] = encrypt_secret(values["api_key"])
 
     row = (await db.execute(
         text("""
@@ -80,7 +84,7 @@ async def create_model(
             RETURNING id, model_name, provider, api_key, base_url, model_id, purpose,
                       price_input, price_output, price_unit, is_active, created_at
         """),
-        payload.model_dump(),
+        values,
     )).fetchone()
     await db.commit()
     return ModelConfigRead.model_validate(_serialize(row))
@@ -91,9 +95,11 @@ async def update_model(
     cfg_id: int,
     payload: ModelConfigUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_manage_models),
 ):
     updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    if "api_key" in updates:
+        updates["api_key"] = encrypt_secret(updates["api_key"])
     if not updates:
         row = (await db.execute(
             text("SELECT id, model_name, provider, api_key, base_url, model_id, purpose, price_input, price_output, price_unit, is_active, created_at FROM model_configs WHERE id = :id"),
@@ -132,7 +138,7 @@ async def update_model(
 async def delete_model(
     cfg_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_manage_models),
 ):
     await db.execute(text("DELETE FROM model_configs WHERE id = :id"), {"id": cfg_id})
     await db.commit()
@@ -142,7 +148,7 @@ async def delete_model(
 async def test_model(
     cfg_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_manage_models),
 ):
     row = (await db.execute(
         text("""SELECT provider, api_key, base_url, model_id, purpose
@@ -155,7 +161,7 @@ async def test_model(
     try:
         if row.purpose == "embedding":
             provider = get_embedding_provider(
-                row.provider, row.base_url or "", row.api_key, row.model_id or ""
+                row.provider, row.base_url or "", decrypt_secret(row.api_key), row.model_id or ""
             )
             result = await provider.embed(["Conus aurisiacus"])
             return ModelTestResponse(
@@ -166,7 +172,7 @@ async def test_model(
             )
         elif row.purpose == "rerank":
             provider = get_rerank_provider(
-                row.provider, row.base_url or "", row.api_key, row.model_id or ""
+                row.provider, row.base_url or "", decrypt_secret(row.api_key), row.model_id or ""
             )
             result = await provider.rerank(
                 "cone snail",
@@ -189,7 +195,7 @@ async def test_model(
 async def usage_summary(
     days: int = Query(30, ge=1, le=365),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_view_usage),
 ):
     since = datetime.now(timezone.utc) - timedelta(days=days)
     rows = (await db.execute(
@@ -217,7 +223,7 @@ async def usage_summary(
 async def usage_recent(
     limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_view_usage),
 ):
     rows = (await db.execute(
         text("""
@@ -235,7 +241,7 @@ async def usage_recent(
 @router.get("/embeddings/status")
 async def embeddings_status(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_view_usage),
 ):
     async def _compute():
         total_taxa = (await db.execute(text("SELECT COUNT(*) FROM taxa"))).scalar_one()
@@ -303,7 +309,7 @@ async def embeddings_status(
 @router.get("/auction-embeddings/status")
 async def auction_embeddings_status(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_view_usage),
 ):
     async def _compute():
         total_auctions = (await db.execute(text("SELECT COUNT(*) FROM auctions"))).scalar_one()

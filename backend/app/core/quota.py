@@ -208,7 +208,7 @@ async def log_query(
         status_code=status_code,
     )
     db.add(log)
-    await db.commit()
+    await db.flush()
 
 
 def extract_ip(request: Request) -> Optional[str]:

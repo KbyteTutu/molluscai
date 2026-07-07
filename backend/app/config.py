@@ -1,5 +1,6 @@
 from typing import Optional
 
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -67,11 +68,60 @@ class Settings(BaseSettings):
     # App
     APP_NAME: str = "MolluscAI"
     APP_VERSION: str = "0.1.0"
+    APP_ENV: str = "development"
     DEBUG: bool = False
 
     # Celery
     CELERY_BROKER_URL: str = "redis://localhost:6380/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6380/0"
+
+    @field_validator("APP_ENV")
+    @classmethod
+    def normalize_app_env(cls, value: str) -> str:
+        return (value or "development").strip().lower()
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        if self.APP_ENV not in {"production", "prod"}:
+            return self
+
+        weak_values = {
+            "POSTGRES_PASSWORD": "mollusc_dev",
+            "MINIO_ACCESS_KEY": "minioadmin",
+            "MINIO_SECRET_KEY": "minioadmin",
+            "JWT_SECRET_KEY": "replace-me-with-a-secure-random-secret",
+            "JWT_REFRESH_SECRET_KEY": "replace-me-with-another-secure-secret",
+            "ENCRYPTION_KEY": "replace-me-with-a-32-byte-hex-key",
+        }
+        configured = {
+            "POSTGRES_PASSWORD": self.POSTGRES_PASSWORD,
+            "MINIO_ACCESS_KEY": self.MINIO_ACCESS_KEY,
+            "MINIO_SECRET_KEY": self.MINIO_SECRET_KEY,
+            "JWT_SECRET_KEY": self.JWT_SECRET_KEY,
+            "JWT_REFRESH_SECRET_KEY": self.JWT_REFRESH_SECRET_KEY,
+            "ENCRYPTION_KEY": self.ENCRYPTION_KEY,
+        }
+        unsafe = [name for name, weak in weak_values.items() if configured[name] == weak]
+        invalid = [
+            name
+            for name in ("JWT_SECRET_KEY", "JWT_REFRESH_SECRET_KEY")
+            if len(configured[name]) < 32
+        ]
+        if len(self.ENCRYPTION_KEY) != 64:
+            invalid.append("ENCRYPTION_KEY")
+        else:
+            try:
+                bytes.fromhex(self.ENCRYPTION_KEY)
+            except ValueError:
+                invalid.append("ENCRYPTION_KEY")
+
+        failures = sorted(set(unsafe + invalid))
+        if failures:
+            raise ValueError(
+                "Refusing to start in production with weak or invalid secret settings: "
+                + ", ".join(failures)
+            )
+        return self
 
 
 settings = Settings()

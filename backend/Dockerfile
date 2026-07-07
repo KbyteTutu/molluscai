@@ -4,6 +4,8 @@ WORKDIR /app
 
 COPY . .
 
+RUN if [ -f requirements.lock.txt ]; then pip install --no-cache-dir -r requirements.lock.txt; fi
+
 # Remove stale celery beat schedule file to prevent auto-resume of old periodic tasks.
 # This file persists across host reboots via volume mounts; clearing it at build time
 # ensures no old schedules leak into containers.

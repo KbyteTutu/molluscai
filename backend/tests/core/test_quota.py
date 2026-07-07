@@ -11,7 +11,9 @@ from app.core.quota import (
     QuotaSnapshot,
     QuotaWindow,
     is_over_quota,
+    log_query,
 )
+from tests.conftest import make_test_user
 
 
 class TestIsOverQuota:
@@ -185,3 +187,19 @@ def test_quota_constants_have_expected_values():
     assert QUERY_TYPE_AUCTION == "auction"
     assert QUERY_TYPE_TAXA == "taxa"
     assert ALL_QUERY_TYPES == (QUERY_TYPE_AI, QUERY_TYPE_AUCTION, QUERY_TYPE_TAXA)
+
+
+@pytest.mark.anyio
+async def test_log_query_flushes_without_committing(mock_db):
+    await log_query(
+        mock_db,
+        user=make_test_user(),
+        query_type=QUERY_TYPE_AUCTION,
+        query_text="Conus",
+        result_count=3,
+        status_code=200,
+    )
+
+    mock_db.add.assert_called_once()
+    mock_db.flush.assert_awaited_once()
+    mock_db.commit.assert_not_awaited()
