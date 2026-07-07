@@ -52,7 +52,7 @@ base_image_stale() {
   base_image_exists || return 0
   local img_ts req_ts
   img_ts=$(docker image inspect -f '{{.Created}}' "$BASE_IMAGE" | xargs -I{} date -d {} +%s 2>/dev/null || echo 0)
-  req_ts=$(stat -c %Y backend/requirements.txt 2>/dev/null || stat -f %m backend/requirements.txt)
+  req_ts=$(stat -c %Y backend/requirements.lock.txt 2>/dev/null || stat -c %Y backend/requirements.txt 2>/dev/null || stat -f %m backend/requirements.txt)
   [[ "$req_ts" -gt "$img_ts" ]]
 }
 
@@ -439,7 +439,7 @@ cmd_prod_up() {
   ensure_base
   rm -f "$ROOT/backend/celerybeat-schedule"*
   log "starting production stack..."
-  $COMPOSE_PROD up -d --build
+  $COMPOSE_PROD up -d --remove-orphans
   ok "production stack started"
   cmd_prod_status
   echo
@@ -471,10 +471,70 @@ cmd_prod_nuke() {
 }
 
 cmd_prod_build() {
-  log "building production images..."
-  docker build -f "$BASE_DOCKERFILE" -t "$BASE_IMAGE" .
-  $COMPOSE_PROD build --no-cache backend frontend
+  local no_cache=""
+  if [[ "${1:-}" == "--no-cache" ]]; then
+    no_cache="--no-cache"
+  fi
+  ensure_infra
+  ensure_base
+  log "building production app images${no_cache:+ without cache}..."
+  $COMPOSE_PROD build $no_cache backend celery-worker frontend
   ok "production images built"
+}
+
+changed_since() {
+  local base="$1"; shift
+  git diff --name-only "$base"..HEAD -- "$@" | grep -q .
+}
+
+cmd_deploy() {
+  ensure_infra
+  local force_rebuild=0
+  if [[ "${1:-}" == "--rebuild" ]]; then
+    force_rebuild=1
+  fi
+  local before after services=()
+  before=$(git rev-parse HEAD)
+
+  log "updating code (fast-forward only)..."
+  git fetch --prune origin
+  git pull --ff-only
+  after=$(git rev-parse HEAD)
+
+  if [[ "$before" == "$after" && "$force_rebuild" -eq 0 ]]; then
+    ok "code already up-to-date"
+    cmd_prod_status
+    return
+  elif [[ "$before" == "$after" ]]; then
+    warn "code already up-to-date; rebuilding all app services because --rebuild was passed"
+  else
+    ok "updated: ${before:0:7} -> ${after:0:7}"
+  fi
+
+  ensure_base
+
+  if [[ "$force_rebuild" -eq 1 ]]; then
+    services=(backend celery-worker frontend)
+  else
+    if changed_since "$before" backend docker-compose.yml docker-compose.prod.yml infra/docker/base.Dockerfile; then
+      services+=(backend celery-worker)
+    fi
+    if changed_since "$before" frontend docker-compose.yml docker-compose.prod.yml; then
+      services+=(frontend)
+    fi
+    if [[ ${#services[@]} -eq 0 ]]; then
+      ok "no app image changes detected"
+      cmd_prod_status
+      return
+    fi
+  fi
+
+  log "building changed services: ${services[*]}"
+  $COMPOSE_PROD build "${services[@]}"
+  log "recreating changed services..."
+  $COMPOSE_PROD up -d --remove-orphans "${services[@]}"
+  ok "deploy complete"
+  cmd_prod_status
 }
 
 cmd_prod_down() {
@@ -589,24 +649,23 @@ cmd_clean_vectors() {
 
 cmd_help() {
   cat <<EOF
-${C_HEAD}MolluscAI dev toolbox${C_END}
+${C_HEAD}MolluscAI toolbox${C_END}
 
-${C_HEAD}Lifecycle:${C_END}
+${C_HEAD}Local lifecycle:${C_END}
   up                start full stack (builds base image if missing/stale)
   down              stop stack
-  nuke              wipe ALL data and images (requires typing 'nuke')
-  rebuild           force --no-cache rebuild of base + app images
   restart [svc]     restart service (default: backend + celery-worker)
+  rebuild           force --no-cache rebuild of base + app images
 
 ${C_HEAD}Observability:${C_END}
   logs [svc]        tail logs (default: backend)
   status            health check across all services
 
 ${C_HEAD}Production (VPS deployment):${C_END}
-  prod-up            start prod stack (auto-creates network + volumes; checks .env)
-  prod-build         build base image + --no-cache backend/frontend
+  deploy [--rebuild] git pull --ff-only, build changed services, restart them
+  prod-up            start existing prod stack without rebuilding images
+  prod-build [--no-cache] build production app images using Docker cache by default
   prod-down          stop production stack (network + volumes preserved)
-  prod-nuke          DESTRUCTIVE: stop + delete volumes + network + images (requires 'prod-nuke')
   prod-restart [svc] restart service (default: backend + frontend)
   prod-logs [svc]    tail production logs (default: backend)
   prod-status        show production compose ps
@@ -618,12 +677,16 @@ ${C_HEAD}Shells:${C_END}
   shell [svc]       bash into container (default: backend)
 
 ${C_HEAD}Data:${C_END}
+  backup [path]     pg_dump to backups/<timestamp>.sql.gz
+  restore <file>    restore from backup (DESTRUCTIVE)
   seed              import legacy/postgres_backup.sql into auctions
   worms-import <f>  import a WoRMS sqlite (.sqlite or .sqlite.gz) into taxa.*
   prod-import [w] [b]  full production import (worms sqlite + auction backup)
+
+${C_HEAD}Maintenance / destructive:${C_END}
   clean-vectors {auctions|taxa|all}  truncate vector tables to free disk space
-  backup [path]     pg_dump to backups/<timestamp>.sql.gz
-  restore <file>    restore from backup (DESTRUCTIVE)
+  nuke              wipe local data and images (requires typing 'nuke')
+  prod-nuke          DESTRUCTIVE: stop + delete volumes + network + images
 
 ${C_HEAD}Tasks (requires ADMIN_USERNAME + ADMIN_PASSWORD env):${C_END}
   scrape [N]        trigger auction scraper (default N=50)
@@ -633,6 +696,7 @@ ${C_HEAD}Testing:${C_END}
   test              end-to-end smoke test (register/me/search)
 
 ${C_HEAD}Examples:${C_END}
+  ./dev deploy
   ./dev up
   ./dev logs celery-worker
   ./dev psql -c "SELECT COUNT(*) FROM auctions"
@@ -663,6 +727,7 @@ case "$cmd" in
   backup)   cmd_backup "$@" ;;
   restore)  cmd_restore "$@" ;;
   # production
+  deploy)         cmd_deploy "$@" ;;
   prod-up)        cmd_prod_up "$@" ;;
   prod-build)     cmd_prod_build "$@" ;;
   prod-down)      cmd_prod_down "$@" ;;

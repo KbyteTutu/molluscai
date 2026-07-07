@@ -9,6 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libmupdf-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY backend/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
-    rm /tmp/requirements.txt
+COPY backend/requirements*.txt /tmp/
+RUN if [ -f /tmp/requirements.lock.txt ]; then \
+      pip install --no-cache-dir -r /tmp/requirements.lock.txt; \
+    else \
+      pip install --no-cache-dir -r /tmp/requirements.txt; \
+    fi && \
+    rm -f /tmp/requirements*.txt

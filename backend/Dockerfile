@@ -2,9 +2,10 @@ FROM molluscai-base:v0.3
 
 WORKDIR /app
 
-COPY . .
-
+COPY requirements*.txt ./
 RUN if [ -f requirements.lock.txt ]; then pip install --no-cache-dir -r requirements.lock.txt; fi
+
+COPY . .
 
 # Remove stale celery beat schedule file to prevent auto-resume of old periodic tasks.
 # This file persists across host reboots via volume mounts; clearing it at build time
