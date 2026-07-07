@@ -124,7 +124,7 @@ ensure_env() {
     die "aborted"
   fi
 
-  local required_nonempty=(POSTGRES_PASSWORD MINIO_ROOT_PASSWORD JWT_SECRET_KEY JWT_REFRESH_SECRET_KEY ENCRYPTION_KEY)
+  local required_nonempty=(POSTGRES_PASSWORD MINIO_ROOT_USER MINIO_ROOT_PASSWORD JWT_SECRET_KEY JWT_REFRESH_SECRET_KEY ENCRYPTION_KEY)
   local required_no_placeholder=(JWT_SECRET_KEY JWT_REFRESH_SECRET_KEY ENCRYPTION_KEY)
   local errors=0
 
@@ -144,6 +144,18 @@ ensure_env() {
       errors=$((errors + 1))
     fi
   done
+
+  local minio_user minio_password
+  minio_user=$(env_get MINIO_ROOT_USER)
+  minio_password=$(env_get MINIO_ROOT_PASSWORD)
+  if [[ "$minio_user" == "minioadmin" ]]; then
+    err ".env: MINIO_ROOT_USER must not be the default 'minioadmin' in production."
+    errors=$((errors + 1))
+  fi
+  if [[ "$minio_password" == "minioadmin" ]]; then
+    err ".env: MINIO_ROOT_PASSWORD must not be the default 'minioadmin' in production."
+    errors=$((errors + 1))
+  fi
 
   [[ $errors -eq 0 ]] || die "aborted ($errors .env validation error(s))"
   ok ".env validated"

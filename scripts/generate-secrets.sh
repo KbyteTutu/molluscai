@@ -17,5 +17,5 @@ echo "POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=')"
 echo "POSTGRES_DB=molluscai"
 
 # MinIO
-echo "MINIO_ROOT_USER=minioadmin"
+echo "MINIO_ROOT_USER=molluscai$(openssl rand -hex 4)"
 echo "MINIO_ROOT_PASSWORD=$(openssl rand -base64 18 | tr -d '/+=')"
