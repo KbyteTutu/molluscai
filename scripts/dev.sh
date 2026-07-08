@@ -664,6 +664,12 @@ cmd_clean_vectors() {
   warn "Run 'VACUUM FULL' later to reclaim disk space if needed."
 }
 
+cmd_inat_sync() {
+  require_running "$BACKEND_CONTAINER"
+  log "syncing iNaturalist metadata and vernacular names..."
+  docker exec -i "$BACKEND_CONTAINER" python -m scripts.sync_inaturalist "$@"
+}
+
 cmd_help() {
   cat <<EOF
 ${C_HEAD}MolluscAI toolbox${C_END}
@@ -699,6 +705,7 @@ ${C_HEAD}Data:${C_END}
   seed              import legacy/postgres_backup.sql into auctions
   worms-import <f>  import a WoRMS sqlite (.sqlite or .sqlite.gz) into taxa.*
   prod-import [w] [b]  full production import (worms sqlite + auction backup)
+  inat-sync [args]  batch sync iNaturalist names, e.g. --limit 100 or --refresh
 
 ${C_HEAD}Maintenance / destructive:${C_END}
   clean-vectors {auctions|taxa|all}  truncate vector tables to free disk space
@@ -737,6 +744,7 @@ case "$cmd" in
   seed)     cmd_seed "$@" ;;
   worms-import)   cmd_worms_import "$@" ;;
   prod-import)    cmd_prod_import "$@" ;;
+  inat-sync)       cmd_inat_sync "$@" ;;
   clean-vectors)  cmd_clean_vectors "$@" ;;
   scrape)   cmd_scrape "$@" ;;
   images)   cmd_images "$@" ;;
