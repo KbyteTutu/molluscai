@@ -29,20 +29,21 @@ services:
     restart: always
     environment:
       APP_ENV: production
-    volumes: []
+    volumes: !reset []
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --limit-concurrency 16
 
   celery-worker:
     restart: always
     environment:
       APP_ENV: production
-    volumes: []
+    volumes: !reset []
 
-  # celery-beat: disabled — beat_schedule={}, no periodic tasks
-  # celery-beat:
-  #   restart: always
-  #   volumes: []
+  celery-beat:
+    restart: always
+    environment:
+      APP_ENV: production
+    volumes: !reset []
 
   frontend:
     restart: always
-    volumes: []
+    volumes: !reset []

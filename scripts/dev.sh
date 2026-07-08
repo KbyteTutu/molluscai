@@ -495,7 +495,7 @@ cmd_prod_build() {
   ensure_infra
   ensure_base
   log "building production app images${no_cache:+ without cache}..."
-  $COMPOSE_PROD build $no_cache backend celery-worker frontend
+  $COMPOSE_PROD build $no_cache backend celery-worker celery-beat frontend
   ok "production images built"
 }
 
@@ -531,10 +531,10 @@ cmd_deploy() {
   ensure_base
 
   if [[ "$force_rebuild" -eq 1 ]]; then
-    services=(backend celery-worker frontend)
+    services=(backend celery-worker celery-beat frontend)
   else
     if changed_since "$before" backend docker-compose.yml docker-compose.prod.yml infra/docker/base.Dockerfile; then
-      services+=(backend celery-worker)
+      services+=(backend celery-worker celery-beat)
     fi
     if changed_since "$before" frontend docker-compose.yml docker-compose.prod.yml; then
       services+=(frontend)
@@ -563,8 +563,8 @@ cmd_prod_down() {
 cmd_prod_restart() {
   local svc="${1:-}"
   if [[ -z "$svc" ]]; then
-    log "recreating backend + celery-worker (picks up compose/.env changes)..."
-    $COMPOSE_PROD up -d --force-recreate backend celery-worker
+    log "recreating backend + celery-worker + celery-beat (picks up compose/.env changes)..."
+    $COMPOSE_PROD up -d --force-recreate backend celery-worker celery-beat
   else
     log "recreating $svc (picks up compose/.env changes)..."
     $COMPOSE_PROD up -d --force-recreate "$svc"
@@ -689,7 +689,7 @@ ${C_HEAD}Production (VPS deployment):${C_END}
   prod-up            start existing prod stack without rebuilding images
   prod-build [--no-cache] build production app images using Docker cache by default
   prod-down          stop production stack (network + volumes preserved)
-  prod-restart [svc] restart service (default: backend + frontend)
+  prod-restart [svc] restart service (default: backend + celery-worker + celery-beat)
   prod-logs [svc]    tail production logs (default: backend)
   prod-status        show production compose ps
   prod-secrets       generate secure random secrets for .env

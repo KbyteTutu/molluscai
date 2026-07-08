@@ -1,5 +1,6 @@
 from celery import Celery
 from celery.signals import task_prerun, task_postrun, task_failure, task_revoked
+from celery.schedules import crontab
 
 from app.config import settings
 
@@ -18,7 +19,7 @@ celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
-    timezone="UTC",
+    timezone=settings.CELERY_TIMEZONE,
     enable_utc=True,
     task_track_started=True,
     task_time_limit=30 * 60,
@@ -33,7 +34,18 @@ celery_app.conf.update(
     # when truly needed for critical non-idempotent work.
     task_acks_late=False,
     task_reject_on_worker_lost=True,
-    beat_schedule={},
+    beat_schedule={
+        "scrape-auctions-monthly-after-close": {
+            "task": "auction.scrape_incremental",
+            "schedule": crontab(minute=5, hour=0, day_of_month="30"),
+            "kwargs": {"batch_size": 2000},
+        },
+        "download-auction-images-monthly-after-close": {
+            "task": "auction.download_images",
+            "schedule": crontab(minute=30, hour=0, day_of_month="30"),
+            "kwargs": {"batch_size": 500},
+        },
+    },
 )
 
 

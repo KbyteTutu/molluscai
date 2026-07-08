@@ -26,6 +26,8 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; MolluscAI/0.1; +https://molluscai.local)"
 }
 
+END_PROBE_OFFSETS = (1, 3, 5, 10, 50)
+
 
 @dataclass
 class BidItem:
@@ -168,20 +170,43 @@ async def _upsert(pool: asyncpg.Pool, item: BidItem) -> None:
     )
 
 
+async def _probe_reached_end(session: aiohttp.ClientSession, item_id: int, sem: asyncio.Semaphore) -> tuple[bool, int]:
+    checked = 0
+    for offset in END_PROBE_OFFSETS:
+        checked += 1
+        item = await _fetch_one(session, item_id + offset, sem)
+        if item is not None:
+            return False, checked
+    return True, checked
+
+
 async def _run_scraper(start_id: int, count: int, concurrency: int = 10) -> dict:
     pool = await asyncpg.create_pool(settings.DATABASE_URL_SYNC.replace("postgresql://", "postgresql://"))
     sem = asyncio.Semaphore(concurrency)
     fetched = 0
     saved = 0
     skipped = 0
+    reached_end = False
+    last_checked_id = start_id - 1
+    probes_checked = 0
     try:
         async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT, headers=HEADERS) as session:
-            tasks = [_fetch_one(session, i, sem) for i in range(start_id, start_id + count)]
-            for coro in asyncio.as_completed(tasks):
-                item = await coro
+            for item_id in range(start_id, start_id + count):
+                item = await _fetch_one(session, item_id, sem)
                 fetched += 1
+                last_checked_id = item_id
                 if item is None:
                     skipped += 1
+                    is_end, checked = await _probe_reached_end(session, item_id, sem)
+                    probes_checked += checked
+                    if is_end:
+                        reached_end = True
+                        logger.info(
+                            "stopping scraper at item_no=%s; probes %s all missing",
+                            item_id,
+                            [item_id + offset for offset in END_PROBE_OFFSETS],
+                        )
+                        break
                     continue
                 try:
                     await _upsert(pool, item)
@@ -191,7 +216,16 @@ async def _run_scraper(start_id: int, count: int, concurrency: int = 10) -> dict
                     skipped += 1
     finally:
         await pool.close()
-    return {"fetched": fetched, "saved": saved, "skipped": skipped, "start_id": start_id, "count": count}
+    return {
+        "fetched": fetched,
+        "saved": saved,
+        "skipped": skipped,
+        "start_id": start_id,
+        "count": count,
+        "last_checked_id": last_checked_id,
+        "probes_checked": probes_checked,
+        "reached_end": reached_end,
+    }
 
 
 async def _get_max_item_no() -> int:
@@ -207,7 +241,8 @@ async def _get_max_item_no() -> int:
 def scrape_incremental(self, batch_size: int = 200, start_id: Optional[int] = None) -> dict:
     """
     Incrementally scrape `batch_size` items starting after MAX(item_no) (or from `start_id`).
-    Designed to run on Celery Beat (hourly). Safe to run concurrently with itself thanks to ON CONFLICT.
+    Stops early when the current item and probes +1/+3/+5/+10/+50 are all missing.
+    Safe to run concurrently with itself thanks to ON CONFLICT.
     """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

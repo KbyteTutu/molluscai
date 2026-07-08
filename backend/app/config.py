@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     # Celery
     CELERY_BROKER_URL: str = "redis://localhost:6380/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6380/0"
+    CELERY_TIMEZONE: str = "Asia/Shanghai"
 
     @field_validator("APP_ENV")
     @classmethod
