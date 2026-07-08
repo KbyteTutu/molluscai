@@ -182,24 +182,24 @@ async function wormsLookup(query) {
           </Button>
         </form>
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <label class="flex items-center gap-2">
+          <label class="flex min-w-0 items-center gap-2">
             <span class="text-xs text-muted-foreground shrink-0 w-10">阶元</span>
-            <select v-model="rank" @change="runSearch(true)" class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs">
+            <select v-model="rank" @change="runSearch(true)" class="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs truncate">
               <option v-for="r in RANKS" :key="r" :value="r">{{ r || '全部' }}</option>
             </select>
           </label>
-          <label class="flex items-center gap-2">
+          <label class="flex min-w-0 items-center gap-2">
             <span class="text-xs text-muted-foreground shrink-0 w-10">状态</span>
-            <select v-model="status" @change="runSearch(true)" class="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs">
+            <select v-model="status" @change="runSearch(true)" class="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs truncate">
               <option value="">全部</option>
               <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
             </select>
           </label>
-          <label class="flex items-center gap-2">
+          <label class="flex min-w-0 items-center gap-2">
             <span class="text-xs text-muted-foreground shrink-0 w-10">科</span>
             <Input v-model="family" placeholder="Conidae" class="h-8 text-xs" @keyup.enter="runSearch(true)" />
           </label>
-          <label class="flex items-center gap-2">
+          <label class="flex min-w-0 items-center gap-2">
             <span class="text-xs text-muted-foreground shrink-0 w-10">属</span>
             <Input v-model="genus" placeholder="Conus" class="h-8 text-xs" @keyup.enter="runSearch(true)" />
           </label>
