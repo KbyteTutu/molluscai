@@ -119,6 +119,8 @@ export const adminApi = {
   runScraper: (data) => apiClient.post('/admin/scraper/run', data),
   downloadImages: (data) => apiClient.post('/admin/scraper/download-images', data),
   scraperStats: () => apiClient.get('/admin/scraper/stats'),
+  minioHealth: () => apiClient.get('/admin/minio/health'),
+  testMinioImage: (data) => apiClient.post('/admin/minio/test-image', data),
   listTasks: (limit = 50) => apiClient.get('/admin/tasks', { params: { limit } }),
   getTask: (id) => apiClient.get(`/admin/tasks/${id}`),
   revokeTask: (id) => apiClient.post(`/admin/tasks/${id}/revoke`),

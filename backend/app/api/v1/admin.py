@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from minio.error import S3Error
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any
 from datetime import date as date_type, datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -161,6 +163,147 @@ class ScraperStats(BaseModel):
     images_downloaded: int
     images_pending: int
     storage_size_mb: float
+
+
+class MinioHealth(BaseModel):
+    endpoint: str
+    bucket: str
+    reachable: bool
+    bucket_exists: bool
+    object_count: int
+    total_bytes: int
+    total_mb: float
+    error: Optional[str] = None
+
+
+class MinioImageProbeRequest(BaseModel):
+    path: Optional[str] = Field(default=None, max_length=500)
+    item_no: Optional[int] = Field(default=None, ge=1)
+
+
+class MinioImageProbe(BaseModel):
+    bucket: str
+    object_name: str
+    exists: bool
+    public_url: str
+    size: Optional[int] = None
+    content_type: Optional[str] = None
+    etag: Optional[str] = None
+    last_modified: Optional[str] = None
+    source: str
+
+
+MINIO_IMAGE_BUCKET = "auction-images"
+
+
+def _normalize_minio_path(path: str) -> tuple[str, str]:
+    cleaned = (path or "").strip()
+    parsed = urlparse(cleaned)
+    if parsed.scheme and parsed.netloc:
+        cleaned = parsed.path
+    cleaned = cleaned.removeprefix("/minio/").lstrip("/")
+    if not cleaned:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Path is required")
+
+    parts = cleaned.split("/", 1)
+    if len(parts) == 1:
+        return MINIO_IMAGE_BUCKET, parts[0]
+    if not parts[1]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Object name is required")
+    return parts[0], parts[1]
+
+
+async def _first_local_image_for_item(db: AsyncSession, item_no: int) -> str:
+    row = await db.execute(
+        select(Auction.images_local).where(Auction.item_no == item_no)
+    )
+    images = row.scalar_one_or_none()
+    if not images:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"item_no={item_no} has no local MinIO image",
+        )
+    return images[0]
+
+
+@router.get("/minio/health", response_model=MinioHealth)
+async def minio_health(
+    _: User = Depends(require_admin),
+):
+    from app.config import settings
+
+    object_count = 0
+    total_bytes = 0
+    try:
+        client = get_minio()
+        bucket_exists = client.bucket_exists(MINIO_IMAGE_BUCKET)
+        if bucket_exists:
+            for obj in client.list_objects(MINIO_IMAGE_BUCKET, recursive=True):
+                object_count += 1
+                total_bytes += int(obj.size or 0)
+        return MinioHealth(
+            endpoint=settings.MINIO_ENDPOINT,
+            bucket=MINIO_IMAGE_BUCKET,
+            reachable=True,
+            bucket_exists=bucket_exists,
+            object_count=object_count,
+            total_bytes=total_bytes,
+            total_mb=round(total_bytes / (1024 * 1024), 2),
+        )
+    except Exception as exc:
+        return MinioHealth(
+            endpoint=settings.MINIO_ENDPOINT,
+            bucket=MINIO_IMAGE_BUCKET,
+            reachable=False,
+            bucket_exists=False,
+            object_count=0,
+            total_bytes=0,
+            total_mb=0.0,
+            error=str(exc),
+        )
+
+
+@router.post("/minio/test-image", response_model=MinioImageProbe)
+async def test_minio_image(
+    payload: MinioImageProbeRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    if payload.item_no is None and not payload.path:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide path or item_no")
+
+    source = "path"
+    path = payload.path or ""
+    if payload.item_no is not None:
+        path = await _first_local_image_for_item(db, payload.item_no)
+        source = "item_no"
+
+    bucket, object_name = _normalize_minio_path(path)
+    client = get_minio()
+    try:
+        stat = client.stat_object(bucket, object_name)
+    except S3Error as exc:
+        if exc.code in {"NoSuchBucket", "NoSuchKey", "NoSuchObject"}:
+            return MinioImageProbe(
+                bucket=bucket,
+                object_name=object_name,
+                exists=False,
+                public_url=f"/minio/{bucket}/{object_name}",
+                source=source,
+            )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    return MinioImageProbe(
+        bucket=bucket,
+        object_name=object_name,
+        exists=True,
+        public_url=f"/minio/{bucket}/{object_name}",
+        size=stat.size,
+        content_type=stat.content_type,
+        etag=stat.etag,
+        last_modified=stat.last_modified.isoformat() if stat.last_modified else None,
+        source=source,
+    )
 
 
 @router.get("/scraper/stats", response_model=ScraperStats)
